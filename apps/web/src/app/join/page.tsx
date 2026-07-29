@@ -20,8 +20,8 @@ import {
   inputClass,
   labelClass,
   OtpPanel,
-  ProviderPanel,
 } from "@/components/auth-panels";
+import { OrDivider, SocialButtons } from "@/components/sign-in-card";
 import {
   Button,
   Card,
@@ -797,27 +797,41 @@ export default function JoinPage() {
         </div>
       </PageHeader>
 
-      {/* ---- Account: password, then the social providers ---------------- */}
+      {/* ---- Sign up / log in -------------------------------------------
+          Single narrow column, social first then an "or" rule then the email
+          form. One decision at a time reads calmer than two panels side by
+          side, and it puts the one-click route where members look first. */}
       <Shell>
         <section className="py-16 sm:py-20">
-          <SectionHead
-            eyebrow="Login & signup"
-            title="Two ways to get an account"
-            lede="A password always works. Google and LinkedIn appear as live buttons only when this deployment holds credentials for them, so you never click something that dead-ends at a redirect."
-          />
-
           <AuthLoading>
-            <LoadingRows rows={4} />
+            <div className="mx-auto max-w-md">
+              <LoadingRows rows={4} />
+            </div>
           </AuthLoading>
 
           <Unauthenticated>
-            <div className="grid gap-px border border-line bg-line lg:grid-cols-[1.05fr_1fr]">
-              <div className="bg-white p-7">
+            <div className="mx-auto max-w-md">
+              <div className="text-center">
+                <Eyebrow>Login &amp; signup</Eyebrow>
+                <h2 className="font-display mt-2 text-2xl leading-snug text-ink">
+                  Choose any one of the following
+                </h2>
+                <p className="mt-2 text-[0.9rem] leading-relaxed text-slate-ink">
+                  Build your profile with a click, or use an email and password.
+                </p>
+              </div>
+
+              <div className="mt-8 border border-line bg-white p-6 sm:p-7">
+                <SocialButtons methods={methods} />
+                <OrDivider />
                 <AccountPanel />
               </div>
-              <div className="bg-white p-7">
-                <ProviderPanel methods={methods} />
-              </div>
+
+              <p className="mt-5 text-center text-[0.8rem] leading-relaxed text-slate-ink">
+                Signing in creates an account. It does not verify you as an RIT
+                graduate — that is the next step below, and the association checks
+                it by hand.
+              </p>
             </div>
           </Unauthenticated>
 
