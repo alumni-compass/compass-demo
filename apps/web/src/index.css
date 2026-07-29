@@ -1,2 +1,127 @@
 @import "@RIT-ALUMINI/ui/globals.css";
-@source "../node_modules/streamdown/dist/*.js";
+
+/**
+ * RITAA design tokens.
+ *
+ * Palette is taken from the RIT crest in the association's letterhead — crest
+ * maroon and a navy ink — with institutional brass for data and eyebrow labels.
+ *
+ * Type is the platform system font throughout — Segoe UI on Windows, San
+ * Francisco on Apple, Roboto on Android. Nothing is downloaded, so there is no
+ * webfont request and no flash of unstyled text, and the portal reads like the
+ * operating system around it rather than like a styled brochure.
+ */
+@theme {
+  --color-ink: #14192b;
+  --color-ink-soft: #1f273d;
+  --color-maroon: #8c1d2c;
+  --color-maroon-deep: #6d1522;
+  --color-brass: #b8863b;
+  --color-brass-soft: #d9b878;
+  --color-bone: #f6f4ef;
+  --color-bone-deep: #ebe7de;
+  --color-slate-ink: #5a6273;
+  --color-jade: #1f6f5c;
+  --color-line: #ddd8cc;
+
+  /* The platform's own UI font — no webfont request, nothing decorative. */
+  --font-system:
+    system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    "Noto Sans", sans-serif;
+  --font-display: var(--font-system);
+  --font-sans: var(--font-system);
+  --font-mono: var(--font-system);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: var(--color-bone);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: 1rem;
+    line-height: 1.6;
+  }
+
+  /* Headings: semibold with slightly tight tracking so larger sizes stay
+     deliberate rather than looking like scaled-up body text. */
+  .font-display {
+    font-weight: 600;
+    letter-spacing: -0.011em;
+  }
+
+  /* The label/number style. Everything is one system face now, so the wide
+     uppercase tracking is what marks these as labels; tabular figures keep
+     numbers aligned down the stat rows and admin tables. */
+  .font-mono {
+    font-variant-numeric: tabular-nums;
+  }
+
+
+  ::selection {
+    background-color: var(--color-brass-soft);
+    color: var(--color-ink);
+  }
+
+  /* Quality floor: keyboard focus must always be visible. */
+  :focus-visible {
+    outline: 2px solid var(--color-maroon);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
+}
+
+@layer components {
+  /*
+   * The batch rail is the site's signature device: a horizontal spine of
+   * cohort years that doubles as the primary way into the directory. The
+   * notches are drawn with a repeating gradient so the rail stays crisp at any
+   * width without shipping an image.
+   */
+  .batch-rail-spine {
+    background-image: repeating-linear-gradient(
+      to right,
+      var(--color-line) 0 1px,
+      transparent 1px 12px
+    );
+  }
+
+  /* Thin brass rule used to open major sections. */
+  .rule-brass {
+    background-image: linear-gradient(
+      to right,
+      var(--color-brass) 0 3rem,
+      var(--color-line) 3rem 100%
+    );
+  }
+
+  /* Paper texture for the dark hero: a very low-contrast weave, no image. */
+  .ink-weave {
+    background-color: var(--color-ink);
+    background-image:
+      radial-gradient(
+        circle at 15% 20%,
+        rgb(140 29 44 / 0.28) 0%,
+        transparent 45%
+      ),
+      radial-gradient(
+        circle at 85% 10%,
+        rgb(184 134 59 / 0.18) 0%,
+        transparent 40%
+      );
+  }
+}

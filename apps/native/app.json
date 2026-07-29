@@ -8,6 +8,9 @@
     },
     "name": "RIT-ALUMINI",
     "slug": "RIT-ALUMINI",
+    "android": {
+      "package": "com.ritalumini.app"
+    },
     "plugins": ["expo-font"],
     "experiments": {
       "typedRoutes": true,

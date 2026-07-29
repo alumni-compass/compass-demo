@@ -1,6 +1,6 @@
 "use client";
 
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
+import { ConvexBetterAuthProvider, type AuthClient } from "@convex-dev/better-auth/react";
 import { env } from "@RIT-ALUMINI/env/web";
 import { Toaster } from "@RIT-ALUMINI/ui/components/sonner";
 import { ConvexReactClient } from "convex/react";
@@ -20,7 +20,14 @@ export default function Providers({
 }) {
   return (
     <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-      <ConvexBetterAuthProvider client={convex} authClient={authClient} initialToken={initialToken}>
+      <ConvexBetterAuthProvider
+        client={convex}
+        // @convex-dev/better-auth types its AuthClient prop by feeding
+        // `BetterAuthClientPlugin & { plugins }` into createAuthClient, which collapses
+        // useSession().data to `never`. Our client is correct at runtime, so cast here.
+        authClient={authClient as unknown as AuthClient}
+        initialToken={initialToken}
+      >
         {children}
       </ConvexBetterAuthProvider>
       <Toaster richColors />

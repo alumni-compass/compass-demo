@@ -8,6 +8,10 @@ dist
 build
 *.tsbuildinfo
 
+# Android/CMake native build output (these are NTFS junctions to D:\rit-build,
+# created by D:\rit-build\setup-junctions.ps1 because C: has no free space)
+.cxx
+
 # Generated files
 apps/web/src/routeTree.gen.ts
 

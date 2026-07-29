@@ -12,6 +12,16 @@ export const env = createEnv({
     EXPO_PUBLIC_CONVEX_URL: convexUrlSchema("example.convex.cloud"),
     EXPO_PUBLIC_CONVEX_SITE_URL: convexUrlSchema("example.convex.site"),
   },
-  runtimeEnv: process.env,
+  // Each variable must be referenced explicitly, exactly as web.ts does.
+  // babel-preset-expo inlines EXPO_PUBLIC_* only at direct static member
+  // accesses like `process.env.EXPO_PUBLIC_CONVEX_URL`; handing it the whole
+  // `process.env` object leaves nothing to rewrite, so in a release bundle the
+  // values are absent, validation throws at module load and the app crashes on
+  // launch. It only appears to work in dev because the Expo runtime populates
+  // process.env there.
+  runtimeEnv: {
+    EXPO_PUBLIC_CONVEX_URL: process.env.EXPO_PUBLIC_CONVEX_URL,
+    EXPO_PUBLIC_CONVEX_SITE_URL: process.env.EXPO_PUBLIC_CONVEX_SITE_URL,
+  },
   emptyStringAsUndefined: true,
 });

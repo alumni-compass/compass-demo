@@ -1,6 +1,6 @@
 import "@/polyfills";
 import "@/global.css";
-import { ConvexBetterAuthProvider } from "@convex-dev/better-auth/react";
+import { ConvexBetterAuthProvider, type AuthClient } from "@convex-dev/better-auth/react";
 import { env } from "@RIT-ALUMINI/env/native";
 import { ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
@@ -30,7 +30,7 @@ function StackLayout() {
 
 export default function Layout() {
   return (
-    <ConvexBetterAuthProvider client={convex} authClient={authClient}>
+    <ConvexBetterAuthProvider client={convex} authClient={authClient as unknown as AuthClient}>
       <GestureHandlerRootView style={{ flex: 1 }}>
         <KeyboardProvider>
           <AppThemeProvider>
