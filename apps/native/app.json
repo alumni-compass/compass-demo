@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "scheme": "RIT-ALUMINI",
+    "userInterfaceStyle": "automatic",
+    "orientation": "default",
+    "web": {
+      "bundler": "metro"
+    },
+    "name": "RIT-ALUMINI",
+    "slug": "RIT-ALUMINI",
+    "plugins": ["expo-font"],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

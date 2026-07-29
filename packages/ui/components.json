@@ -1,0 +1,24 @@
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "base-lyra",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/styles/globals.css",
+    "baseColor": "neutral",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "lucide",
+  "aliases": {
+    "components": "@RIT-ALUMINI/ui/components",
+    "utils": "@RIT-ALUMINI/ui/lib/utils",
+    "hooks": "@RIT-ALUMINI/ui/hooks",
+    "lib": "@RIT-ALUMINI/ui/lib",
+    "ui": "@RIT-ALUMINI/ui/components"
+  },
+  "menuColor": "default",
+  "menuAccent": "subtle",
+  "registries": {}
+}

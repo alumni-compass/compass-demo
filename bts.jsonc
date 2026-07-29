@@ -1,0 +1,28 @@
+// Better-T-Stack project metadata
+//
+// Keep this file to use the `add` command.
+// Add addons: npx create-better-t-stack@latest add
+//
+// Docs: https://better-t-stack.dev/docs
+// Stack Builder: https://better-t-stack.dev/new
+
+{
+  "$schema": "https://r2.better-t-stack.dev/schema.json",
+  "version": "3.38.0",
+  "createdAt": "2026-07-29T05:08:36.025Z",
+  "reproducibleCommand": "npx create-better-t-stack@latest RIT-ALUMINI --frontend next native-uniwind --backend convex --runtime none --database none --orm none --api none --auth better-auth --payments none --addons turborepo --examples ai --db-setup none --web-deploy none --server-deploy none --git --package-manager npm --install",
+  "database": "none",
+  "orm": "none",
+  "backend": "convex",
+  "runtime": "none",
+  "frontend": ["next", "native-uniwind"],
+  "addons": ["turborepo"],
+  "examples": ["ai"],
+  "auth": "better-auth",
+  "payments": "none",
+  "packageManager": "npm",
+  "dbSetup": "none",
+  "api": "none",
+  "webDeploy": "none",
+  "serverDeploy": "none",
+}
