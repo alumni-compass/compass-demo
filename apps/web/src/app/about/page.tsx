@@ -38,7 +38,7 @@ const MODULES = [
   {
     n: "01",
     name: "User roles & access",
-    line: "Email and password sign-in works today. Google, LinkedIn and one-time codes are waiting on provider credentials and a mail gateway, and the four-role access model is defined but not yet enforced in code.",
+    line: "Sign-in is Google or LinkedIn, and nothing else — a provider-confirmed identity is a better starting point for a members' directory than a self-declared address. Both switch on once the association adds their credentials, and until one is set nobody can sign in. The four-role access model is defined but not yet enforced in code.",
   },
   {
     n: "02",
@@ -48,7 +48,7 @@ const MODULES = [
   {
     n: "03",
     name: "Alumni directory",
-    line: "Search by name with filters for batch, department and region, running on a Convex search index. The batch rail is the fastest way in.",
+    line: "Search by name with filters for batch, department, company and region, running on a Convex search index. Connecting is a real mutual edge, not a mail draft: ask, they accept, and a direct thread opens. Where a member you know also knows the one you are viewing, the portal names them. The batch rail is the fastest way in.",
   },
   {
     n: "04",
@@ -88,7 +88,7 @@ const MODULES = [
   {
     n: "11",
     name: "Mobile optimisation",
-    line: "Every page is laid out mobile-first and works down to a small phone in a browser. There is no separate native app build in this repository.",
+    line: "Every page is laid out mobile-first and works down to a small phone in a browser. Messages collapse to one pane at a time on a phone rather than squeezing two columns. The Expo app in apps/native shares this backend but is not built out.",
   },
   {
     n: "12",
@@ -109,6 +109,10 @@ const IN_PLACE = [
   {
     t: "Credentials handled by better-auth",
     c: "Passwords are hashed and sessions issued by better-auth. The association never stores or sees a member's password, and nothing in the portal logs one.",
+  },
+  {
+    t: "Connections and messages never publish an address",
+    c: "Asking to connect names the member by their directory id, never by email, and the address is resolved on the server — so a member who keeps their address private is exactly as reachable as one who publishes it. Messaging carries the conversation instead of handing over a phone number, and removing a connection closes the thread while leaving the history readable to both sides.",
   },
   {
     t: "No third-party trackers or image hosts",

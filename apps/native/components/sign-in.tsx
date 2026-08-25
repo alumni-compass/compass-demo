@@ -1,3 +1,15 @@
+/*
+ * HEADS UP — this form no longer works against the shared Convex backend.
+ *
+ * `packages/backend/convex/auth.ts` no longer registers a password strategy at
+ * all: web sign-in is Google and LinkedIn only. `authClient.signIn.email` /
+ * `signUp.email` therefore fail here, and the toast below is what the member sees.
+ *
+ * The Expo app is still the Better-T-Stack scaffold and was out of scope for that
+ * change, so nothing here was rewritten rather than half-rewritten. Porting it
+ * means `@better-auth/expo` + `expo-web-browser` for the OAuth round trip, and
+ * registering the native redirect with both providers.
+ */
 import { useForm } from "@tanstack/react-form";
 import {
   Button,

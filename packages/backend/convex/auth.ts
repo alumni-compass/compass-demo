@@ -14,7 +14,19 @@ const nativeAppUrl = process.env.NATIVE_APP_URL || "RIT-ALUMINI://";
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 /**
- * Module 1 — social logins (Google, LinkedIn).
+ * Module 1 — social logins, and the ONLY way into the portal.
+ *
+ * Google and LinkedIn are the two sign-in methods. Email-and-password and
+ * one-time codes were both removed: a members' network is only worth joining if
+ * the people in it are who they say they are, and a provider-confirmed identity
+ * with a real name and a work email attached is a far better starting point than
+ * a self-declared address with a password. LinkedIn in particular is where these
+ * members already keep the employer and designation this directory asks for.
+ *
+ * CONSEQUENCE, STATED PLAINLY: with neither provider's credentials set on the
+ * deployment, nobody can sign in — there is no fallback any more. Set at least
+ * one before launch. `configuredAuthMethods` reports this and the join page says
+ * it out loud rather than showing two buttons that fail on click.
  *
  * Each provider is registered only when both of its credentials are present on
  * the deployment. Registering a provider without a client secret makes
@@ -52,20 +64,23 @@ function socialProviders() {
 /**
  * Lets the sign-in page render only the buttons that will actually work, instead
  * of showing a Google button that dead-ends because no credentials are set.
+ *
+ * `anyConfigured` exists because it is now the difference between a portal
+ * people can join and one nobody can: Google and LinkedIn are the only two ways
+ * in, so with neither configured there is no sign-in at all. The join page reads
+ * this and says so plainly instead of showing two dead buttons.
  */
 export const configuredAuthMethods = query({
   args: {},
-  handler: async () => ({
-    emailPassword: true,
-    google: Boolean(
+  handler: async () => {
+    const google = Boolean(
       process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET,
-    ),
-    linkedin: Boolean(
+    );
+    const linkedin = Boolean(
       process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET,
-    ),
-    /** OTP needs a mail sender; see access.ts startOtp. */
-    emailOtp: Boolean(process.env.RESEND_API_KEY),
-  }),
+    );
+    return { google, linkedin, anyConfigured: google || linkedin };
+  },
 });
 
 function createAuth(ctx: GenericCtx<DataModel>) {
@@ -73,10 +88,9 @@ function createAuth(ctx: GenericCtx<DataModel>) {
     baseURL: siteUrl,
     trustedOrigins: [siteUrl, nativeAppUrl, "exp://"],
     database: authComponent.adapter(ctx),
-    emailAndPassword: {
-      enabled: true,
-      requireEmailVerification: false,
-    },
+    // No emailAndPassword block: passwords are off. Leaving it enabled while the
+    // UI offered only social buttons would keep a second, unadvertised way in
+    // that nothing on the site tells members about and nobody maintains.
     socialProviders: socialProviders(),
     plugins: [
       expo(),

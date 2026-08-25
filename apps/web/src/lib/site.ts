@@ -114,6 +114,39 @@ export const NAV = [
   { href: "/about", label: "About" },
 ] as const;
 
+/**
+ * Member-only surfaces. Kept out of NAV — and therefore out of the footer —
+ * because both are meaningless without a session: the footer is the public map
+ * of the site, and listing a route there that only ever redirects to the join
+ * page is a dead end dressed as navigation.
+ *
+ * Each carries a live count in the header, which is why they are a separate list
+ * rather than two more NAV entries: the count is what makes them worth a place
+ * in the bar at all.
+ */
+export const MEMBER_NAV = [
+  { href: "/feed", label: "Feed", counter: null },
+  { href: "/communities", label: "Communities", counter: "moderation" },
+  { href: "/network", label: "Network", counter: "connections" },
+  { href: "/messages", label: "Messages", counter: "messages" },
+] as const;
+
+/**
+ * Member-only routes that do not earn a slot in the bar.
+ *
+ * Thirteen links is not navigation, it is a list. These live in the account menu
+ * instead, which is where a member looks for their own things — and /students is
+ * also linked from the directory, which is the page people are on when they want
+ * it.
+ */
+export const MEMBER_MENU = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/profile", label: "Your profile" },
+  { href: "/students", label: "Student database" },
+  { href: "/network", label: "Your network" },
+  { href: "/messages", label: "Messages" },
+] as const;
+
 /** Formats paise-free rupee amounts the way Indian donors expect to read them. */
 export function inr(amount: number, opts?: { compact?: boolean }) {
   if (opts?.compact) {

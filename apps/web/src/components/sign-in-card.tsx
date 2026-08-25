@@ -1,24 +1,40 @@
 "use client";
 
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { actionErrorMessage, Pill } from "@/components/kit";
 import { authClient } from "@/lib/auth-client";
-
-import { actionErrorMessage, type AuthMethods } from "./auth-panels";
+import { RITAA } from "@/lib/site";
 
 /**
- * The sign-up / log-in card.
+ * The sign-in card — Google and LinkedIn, and nothing else.
  *
- * Follows the order alumni platforms have settled on (and that iitmaa.org uses):
- * the social buttons come first because they are the path most members take, then
- * an "or" rule, then the email form for anyone without a Google or LinkedIn
- * account. Leading with the form buries the one-click route.
+ * WHY ONLY TWO. A members' directory is worth joining only if the people in it
+ * are who they say they are. A provider-confirmed identity arrives with a real
+ * name, a working address and usually a photograph; a self-declared email and a
+ * password arrive with none of that and leave the association hand-checking
+ * everything. LinkedIn in particular is where these members already keep the
+ * employer and designation this directory asks for, so it is the shortest path
+ * from "signed in" to "a profile worth finding".
  *
- * A provider button is only interactive when the server reports credentials for
- * it — see `auth.configuredAuthMethods`. Unconfigured providers render visibly
- * unavailable rather than failing after the click.
+ * Email-and-password and one-time codes are gone rather than hidden — see
+ * `convex/auth.ts`, which no longer registers a password strategy at all. There
+ * is no unadvertised second way in.
+ *
+ * A provider button is interactive only when the server reports credentials for
+ * it — see `auth.configuredAuthMethods`. With neither configured there is no
+ * sign-in at all, and this card says exactly that instead of showing two buttons
+ * that fail on click.
  */
+
+export type AuthMethods = {
+  google: boolean;
+  linkedin: boolean;
+  anyConfigured: boolean;
+};
 
 /** Google's mark, drawn inline — four paths, no external request. */
 function GoogleMark() {
@@ -56,8 +72,21 @@ function LinkedInMark() {
 }
 
 const PROVIDERS = [
-  { id: "google", label: "Continue with Google", Mark: GoogleMark },
-  { id: "linkedin", label: "Continue with LinkedIn", Mark: LinkedInMark },
+  {
+    id: "google",
+    name: "Google",
+    label: "Continue with Google",
+    Mark: GoogleMark,
+    /** What the member gets from choosing this one. */
+    brings: "Confirms your name and email address.",
+  },
+  {
+    id: "linkedin",
+    name: "LinkedIn",
+    label: "Continue with LinkedIn",
+    Mark: LinkedInMark,
+    brings: "Confirms your name, address and current employer.",
+  },
 ] as const;
 
 export function SocialButtons({ methods }: { methods: AuthMethods | undefined }) {
@@ -75,58 +104,101 @@ export function SocialButtons({ methods }: { methods: AuthMethods | undefined })
   }
 
   const checking = methods === undefined;
-  const anyLive = methods?.google === true || methods?.linkedin === true;
+  const anyLive = methods?.anyConfigured === true;
 
   return (
     <div>
       <div className="space-y-3">
-        {PROVIDERS.map(({ id, label, Mark }) => {
+        {PROVIDERS.map(({ id, name, label, Mark, brings }) => {
           const live = methods?.[id] === true;
           return (
-            <button
-              key={id}
-              type="button"
-              disabled={!live || pending !== null}
-              onClick={live ? () => void signInWith(id) : undefined}
-              title={
-                live
-                  ? undefined
-                  : `The association has not added ${id === "google" ? "Google" : "LinkedIn"} credentials to this deployment yet.`
-              }
-              className={`flex min-h-12 w-full items-center justify-center gap-3 border text-[0.925rem] transition-colors ${
-                live
-                  ? "border-ink/20 bg-white text-ink hover:border-ink/40 hover:bg-bone"
-                  : "cursor-not-allowed border-dashed border-line bg-white/60 text-slate-ink"
-              }`}
-            >
-              <Mark />
-              <span>{pending === id ? "Redirecting…" : label}</span>
-            </button>
+            <div key={id}>
+              <button
+                type="button"
+                disabled={!live || pending !== null}
+                onClick={live ? () => void signInWith(id) : undefined}
+                title={
+                  live
+                    ? undefined
+                    : `The association has not added ${name} credentials to this deployment yet.`
+                }
+                className={`flex min-h-12 w-full items-center justify-center gap-3 rounded-control border text-[0.925rem] transition-all ${
+                  live
+                    ? "border-line-strong bg-surface text-ink shadow-panel hover:-translate-y-px hover:border-ink/35 hover:shadow-lift"
+                    : "cursor-not-allowed border-dashed border-line bg-surface/60 text-slate-soft"
+                }`}
+              >
+                <Mark />
+                <span>{pending === id ? "Redirecting…" : label}</span>
+              </button>
+              <p className="mt-2 text-center text-[0.75rem] leading-snug text-slate-ink">
+                {checking
+                  ? "Checking this deployment."
+                  : live
+                    ? brings
+                    : `${name} switches on once the association adds its credentials.`}
+              </p>
+            </div>
           );
         })}
       </div>
 
-      {/* One honest line, rather than a note under each button. */}
-      <p className="mt-3 text-center text-[0.8rem] leading-snug text-slate-ink">
-        {checking
-          ? "Checking which sign-in methods this deployment has."
-          : anyLive
-            ? "Your provider confirms your email address. The association still verifies your batch and roll number separately."
-            : "Google and LinkedIn switch on by themselves once the association adds their credentials. Use an email and password until then."}
-      </p>
+      {/* The one case that matters most, said plainly rather than implied. */}
+      {!checking && !anyLive ? (
+        <div className="mt-6 rounded-card border border-maroon/30 bg-maroon-tint p-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <Pill tone="maroon">No sign-in configured</Pill>
+          </div>
+          <p className="mt-3 text-[0.875rem] leading-relaxed text-ink">
+            Google and LinkedIn are the only two ways into the portal, and neither
+            has credentials on this deployment yet — so nobody can sign in at the
+            moment, including the association.
+          </p>
+          <p className="mt-2.5 text-[0.85rem] leading-relaxed text-slate-ink">
+            Set one of them on the Convex deployment and this card switches on by
+            itself. Until then, write to{" "}
+            <a
+              href={`mailto:${RITAA.email}`}
+              className="text-maroon underline decoration-brass/50 underline-offset-4 transition-colors hover:text-maroon-deep"
+            >
+              {RITAA.email}
+            </a>
+            .
+          </p>
+        </div>
+      ) : null}
+
+      {!checking && anyLive ? (
+        <p className="mt-5 border-t border-line pt-4 text-center text-[0.8rem] leading-snug text-slate-ink">
+          Your provider confirms your email address. The association still verifies
+          your batch and roll number separately — that is the step below.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-/** The "or" rule between the social buttons and the email form. */
-export function OrDivider() {
+/**
+ * The state of the two providers, for a page that wants to report it.
+ *
+ * Its own component so the join masthead can show it without every caller
+ * re-deriving what "live" means from the raw query.
+ */
+export function MethodPills() {
+  const methods = useQuery(api.auth.configuredAuthMethods);
+
   return (
-    <div className="my-7 flex items-center gap-4" aria-hidden>
-      <span className="h-px flex-1 bg-line" />
-      <span className="font-mono text-[0.7rem] uppercase tracking-[0.16em] text-slate-ink">
-        or
-      </span>
-      <span className="h-px flex-1 bg-line" />
+    <div className="flex flex-wrap gap-2">
+      {PROVIDERS.map((provider) => (
+        <Pill key={provider.id} tone="dark">
+          {provider.name} ·{" "}
+          {methods === undefined
+            ? "checking"
+            : methods[provider.id]
+              ? "live"
+              : "not configured"}
+        </Pill>
+      ))}
     </div>
   );
 }

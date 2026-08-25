@@ -1,18 +1,22 @@
 "use client";
 
 import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { ReactNode } from "react";
 
+import ConnectAction from "@/components/connect-action";
 import {
   Button,
   Card,
+  DegreeMark,
   Empty,
   Eyebrow,
   LoadingRows,
   Monogram,
+  MutualNote,
   PageHeader,
   Pill,
   Shell,
@@ -110,6 +114,17 @@ export default function AlumniProfilePage() {
   const people = useQuery(api.directory.search, { limit: LOOKUP_LIMIT });
   const person = people?.find((row) => row._id === id);
 
+  /*
+   * The caller's relationship to this member: connected or not, and where a
+   * mutual connection exists, who it is by name.
+   *
+   * Called before the loading and not-found returns below, because hooks cannot
+   * sit behind a conditional. `profileEdge` takes the raw URL segment and
+   * normalises it server-side, so an id that is not a real alumni id answers
+   * "nothing known" rather than throwing into this render.
+   */
+  const edge = useQuery(api.network.profileEdge, { alumniId: id });
+
   /* ---- Loading ------------------------------------------------------- */
   if (people === undefined) {
     return (
@@ -151,22 +166,6 @@ export default function AlumniProfilePage() {
   }
 
   const departmentName = DEPARTMENT_NAMES[person.department] ?? person.department;
-  const mailto = person.email
-    ? `mailto:${person.email}?subject=${encodeURIComponent(
-        `${RITAA.shortName} — introduction request`,
-      )}&body=${encodeURIComponent(
-        [
-          `Hello ${person.name},`,
-          "",
-          `I found your profile in the ${RITAA.shortName} alumni directory (${person.department}, batch ${person.batch}).`,
-          "",
-          "I would like to connect about:",
-          "",
-          "",
-          `Sent from ${RITAA.website}`,
-        ].join("\n"),
-      )}`
-    : null;
 
   return (
     <>
@@ -186,8 +185,30 @@ export default function AlumniProfilePage() {
             <Pill tone="dark">{person.department}</Pill>
             {person.region ? <Pill tone="dark">{person.region}</Pill> : null}
             {person.openToMentor ? <Pill tone="dark">Mentors</Pill> : null}
+            {edge?.theirConnectionCount ? (
+              <Pill tone="dark">
+                <span className="tabular-nums">{edge.theirConnectionCount}</span>{" "}
+                connections
+              </Pill>
+            ) : null}
           </div>
         </div>
+
+        {/*
+          THE SIGNATURE, at full size on the one page where it matters most.
+          A visitor deciding whether to ask a stranger for their time is helped far
+          more by "Priya and Arun know you both" than by the label "2nd" — the name
+          tells them who to ask for the introduction instead.
+        */}
+        {edge && edge.mutualNames.length > 0 ? (
+          <div className="mt-6 max-w-xl border-t border-white/15 pt-5">
+            <MutualNote
+              names={edge.mutualNames}
+              complete={edge.mutualsComplete}
+              onDark
+            />
+          </div>
+        ) : null}
       </PageHeader>
 
       <Shell>
@@ -206,6 +227,7 @@ export default function AlumniProfilePage() {
             ) : (
               <Pill tone="quiet">Verification pending</Pill>
             )}
+            <DegreeMark degree={edge?.degree ?? null} />
             {person.featured ? <Pill tone="brass">Featured member</Pill> : null}
             {person.openToMentor ? <Pill tone="jade">Open to mentoring</Pill> : null}
           </div>
@@ -362,26 +384,21 @@ export default function AlumniProfilePage() {
                   </ContactRow>
                 </dl>
 
-                <div className="mt-6 flex flex-wrap gap-2">
-                  {mailto ? (
-                    <Button
-                      onClick={() => {
-                        window.location.href = mailto;
-                      }}
-                    >
-                      Request connect
-                    </Button>
-                  ) : (
-                    <span title="Email not shared" className="inline-flex">
-                      <Button disabled>
-                        Request connect
-                        <span className="sr-only">
-                          — email not shared by this member
-                        </span>
-                      </Button>
-                    </span>
-                  )}
-                  <Button href="/directory" variant="outline">
+                {/*
+                  Connecting no longer depends on the member having published an
+                  address. `network.requestConnection` takes this profile's id and
+                  resolves the address server-side, so the members most careful
+                  with their contact details are no longer the least reachable —
+                  which is how it used to work when this was a mailto draft.
+                */}
+                <div className="mt-6 flex flex-wrap items-center gap-2">
+                  <ConnectAction
+                    alumniId={person._id}
+                    name={person.name}
+                    state={edge?.state}
+                    connectionId={edge?.connectionId ?? undefined}
+                  />
+                  <Button href="/directory" variant="outline" size="sm">
                     Back to directory
                   </Button>
                 </div>

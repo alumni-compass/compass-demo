@@ -60,6 +60,22 @@ function mailerConfigured() {
   return Boolean(process.env.RESEND_API_KEY);
 }
 
+/**
+ * Whether this deployment can send mail at all.
+ *
+ * The admin panel used to read this off `auth.configuredAuthMethods.emailOtp`,
+ * because the one-time-code action needed the same key. Sign-in is Google and
+ * LinkedIn now and that flag is gone, so the question gets its own query — and
+ * this is the right module for it, since event reminders are the only thing left
+ * in the portal that sends email.
+ *
+ * Returns a boolean and nothing else: never the key, never a fragment of it.
+ */
+export const mailerStatus = query({
+  args: {},
+  handler: async () => ({ configured: mailerConfigured() }),
+});
+
 function normaliseEmail(email: string) {
   return email.trim().toLowerCase();
 }

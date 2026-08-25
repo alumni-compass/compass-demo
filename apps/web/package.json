@@ -9,11 +9,11 @@
     "start": "next start"
   },
   "dependencies": {
+    "@convex-dev/agent": "^0.6.4",
+    "@convex-dev/better-auth": "^0.12.5",
     "@RIT-ALUMINI/backend": "*",
     "@RIT-ALUMINI/env": "*",
     "@RIT-ALUMINI/ui": "*",
-    "@convex-dev/agent": "^0.6.4",
-    "@convex-dev/better-auth": "^0.12.5",
     "@swc/helpers": "^0.5.23",
     "@tanstack/react-form": "^1.33.2",
     "babel-plugin-react-compiler": "^1.0.0",
@@ -27,6 +27,7 @@
     "react-dom": "^19.2.8",
     "sonner": "^2.0.7",
     "streamdown": "^2.5.0",
+    "xlsx": "^0.18.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {

@@ -11,8 +11,44 @@ This project was created with [Better-T-Stack](https://github.com/AmanVarshney01
 - **TailwindCSS** - Utility-first CSS for rapid UI development
 - **Shared UI package** - shadcn/ui primitives live in `packages/ui`
 - **Convex** - Reactive backend-as-a-service platform
-- **Authentication** - Better-Auth
+- **Authentication** - Better-Auth, **Google and LinkedIn only**
 - **Turborepo** - Optimized monorepo build system
+
+## Signing in
+
+The portal has exactly two ways in: **Continue with Google** and **Continue with
+LinkedIn**. There is no password and no one-time code — a members' directory is
+only worth joining if the people in it are who they say they are, and a
+provider-confirmed identity arrives with a real name and a working address.
+
+Each provider registers itself only when both of its credentials are present on
+the Convex deployment, so **with neither set, nobody can sign in**:
+
+```bash
+cd packages/backend
+npx convex env set GOOGLE_CLIENT_ID        xxx
+npx convex env set GOOGLE_CLIENT_SECRET    xxx
+npx convex env set LINKEDIN_CLIENT_ID      xxx
+npx convex env set LINKEDIN_CLIENT_SECRET  xxx
+
+npx convex run auth:configuredAuthMethods   # anyConfigured must be true
+```
+
+Redirect URIs to register with each provider are
+`<SITE_URL>/api/auth/callback/google` and `…/linkedin`. See `DEPLOYMENT.md`.
+
+## The network
+
+`/directory` finds members; `/network` and `/messages` are what make it two-way.
+
+- Connecting is a **mutual edge** — a request does nothing until the other member
+  accepts, and either side can withdraw or remove it afterwards.
+- Accepting opens a **direct thread** inside the portal. No phone number or email
+  changes hands: `network.ts` and `messaging.ts` never return an address to a
+  browser, and the client's handles are an `alumniId` and a `connectionId`.
+- Where a member you know also knows the one you are viewing, the portal **names
+  them** instead of showing an abstract degree — that is who to ask for the
+  introduction.
 
 ## Getting Started
 

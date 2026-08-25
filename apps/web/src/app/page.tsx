@@ -24,7 +24,7 @@ const PILLARS = [
   {
     href: "/directory",
     title: "Alumni Directory",
-    copy: "Search every verified member by batch, department, company or region. Ask for an introduction instead of sending a cold message.",
+    copy: "Search every verified member by batch, department, company or region, then ask to connect — and see who you both already know.",
   },
   {
     href: "/careers",
@@ -61,6 +61,8 @@ export default function HomePage() {
   const stories = useQuery(api.stories.featured);
   const campaigns = useQuery(api.giving.listCampaigns, { activeOnly: true });
   const raceStats = useQuery(api.race.raceStats);
+  /** Counts only, so this is readable before anyone signs in. */
+  const network = useQuery(api.network.networkStats);
 
   const upcoming = (events ?? []).slice(0, 3);
   const topCampaign = (campaigns ?? [])[0];
@@ -123,14 +125,94 @@ export default function HomePage() {
       </section>
 
       {/* ---- Headline numbers -------------------------------------------- */}
-      <section className="border-b border-line bg-white">
+      <section className="border-b border-line bg-surface">
         <Shell>
-          <div className="grid grid-cols-2 gap-8 py-10 sm:grid-cols-4 lg:grid-cols-5">
+          <div className="grid grid-cols-2 gap-8 py-10 sm:grid-cols-3 lg:grid-cols-6">
             <Stat value={stats?.alumni ?? "—"} label="Verified members" />
+            <Stat value={network?.connections ?? "—"} label="Connections made" />
             <Stat value={stats?.batches ?? "—"} label="Batches represented" />
             <Stat value={stats?.companies ?? "—"} label="Companies & institutions" />
             <Stat value={stats?.mentors ?? "—"} label="Alumni mentoring" />
             <Stat value={stats?.ventures ?? "—"} label="Ventures on RACE" />
+          </div>
+        </Shell>
+      </section>
+
+      {/* ---- The network: what the portal is actually for ----------------
+          Its own band rather than a seventh tile in the grid below. The six
+          tiles map to the brief's modules; connecting is the thing that makes
+          any of them work, so it gets stated before them and once. */}
+      <section className="border-b border-line bg-surface-sunk">
+        <Shell className="py-16 sm:py-20">
+          <div className="grid gap-12 lg:grid-cols-[1fr_1.05fr] lg:items-center">
+            <div>
+              <Eyebrow>Your network</Eyebrow>
+              <h2 className="font-display mt-3 text-3xl leading-[1.1] text-ink sm:text-4xl">
+                A list of names is not a network.
+              </h2>
+              <p className="mt-4 max-w-lg text-[1rem] leading-relaxed text-slate-ink">
+                Ask any member to connect and say why. When they accept, a direct
+                thread opens between you — inside the portal, with no phone number
+                changing hands. What other members can see of your contact details
+                stays yours to set, and stays private by default.
+              </p>
+              <p className="mt-4 max-w-lg text-[0.9rem] leading-relaxed text-slate-ink">
+                Where somebody you already know also knows the member you are
+                looking at, {RITAA.shortName} names them. Knowing that one specific
+                person can introduce you is the difference between a cold request
+                and a warm one.
+              </p>
+              <div className="mt-8 flex flex-wrap gap-3">
+                <Button href="/network">Open your network</Button>
+                <Button href="/directory" variant="outline">
+                  Find members
+                </Button>
+              </div>
+            </div>
+
+            {/*
+              A worked example of the mutual marker, not a screenshot. It is the
+              one device on the site worth showing before a visitor has an account,
+              because it is the thing they cannot get from a directory.
+            */}
+            <div className="rounded-card border border-line bg-surface p-6 shadow-card sm:p-7">
+              <Eyebrow>What a member card tells you</Eyebrow>
+              <div className="mt-5 flex items-start gap-4">
+                <Monogram name="Priya Raman" size="lg" />
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-display text-lg leading-snug text-ink">
+                      Priya Raman
+                    </span>
+                    <VerifiedMark />
+                    <span className="font-mono rounded-chip border border-line-strong bg-bone px-2 py-0.5 text-[0.65rem] uppercase tracking-[0.1em] text-slate-ink">
+                      2nd
+                    </span>
+                  </div>
+                  <p className="font-mono mt-1 text-[0.7rem] tabular-nums text-brass-ink">
+                    CSE · &rsquo;21
+                  </p>
+                  <p className="mt-1.5 text-[0.85rem] leading-snug text-ink">
+                    Platform Engineer · Zoho
+                  </p>
+                  <p className="mutual-marker mt-3 text-[0.8rem] leading-snug text-slate-ink">
+                    <span className="text-ink">Arun Kumar</span> knows you both
+                  </p>
+                </div>
+              </div>
+              <div className="mt-6 flex flex-wrap gap-2 border-t border-line pt-5">
+                <span className="font-mono inline-flex min-h-9 items-center rounded-control bg-maroon px-3.5 text-[0.7rem] uppercase tracking-[0.12em] text-bone">
+                  Connect
+                </span>
+                <span className="font-mono inline-flex min-h-9 items-center rounded-control border border-ink/20 px-3.5 text-[0.7rem] uppercase tracking-[0.12em] text-ink">
+                  View profile
+                </span>
+              </div>
+              <p className="mt-5 text-[0.78rem] leading-snug text-slate-soft">
+                An illustration of the card, with a sample member. Real members
+                appear in the directory.
+              </p>
+            </div>
           </div>
         </Shell>
       </section>

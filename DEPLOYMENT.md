@@ -44,6 +44,11 @@ Development**:
 | `NEXT_PUBLIC_CONVEX_URL` | `https://terrific-bird-760.convex.cloud` |
 | `NEXT_PUBLIC_CONVEX_SITE_URL` | `https://terrific-bird-760.convex.site` |
 
+> `npx convex codegen` regenerates TypeScript bindings **without deploying**. A
+> local build can therefore typecheck cleanly against functions that are not on the
+> deployment yet. Use `npx convex dev --once` (dev) or `npx convex deploy` (prod) to
+> actually push, and `npx convex run <module>:<fn>` to confirm a function is live.
+
 Both are read at **build** time by `packages/env/src/web.ts`, which validates that
 each is a real URL and explicitly rejects the `example.convex.cloud` placeholder.
 If either is missing or still a placeholder, the Vercel build fails with a message
@@ -72,14 +77,33 @@ Convex, not on Vercel, and are not copied over from dev:
 npx convex env set BETTER_AUTH_SECRET  <a fresh 32+ char random string>
 npx convex env set SITE_URL            https://<your-vercel-domain>
 
-# Optional, each enables a feature that is otherwise gated off in the UI:
-npx convex env set RESEND_API_KEY      re_xxx      # OTP codes + event reminders
-npx convex env set OTP_FROM_EMAIL      "RITAA <alumni@ritrjpm.ac.in>"
+# REQUIRED — at least one of these two pairs. See the warning below.
 npx convex env set GOOGLE_CLIENT_ID        xxx    # Google sign-in
 npx convex env set GOOGLE_CLIENT_SECRET    xxx
 npx convex env set LINKEDIN_CLIENT_ID      xxx    # LinkedIn sign-in
 npx convex env set LINKEDIN_CLIENT_SECRET  xxx
+
+# Optional — enables event reminder emails, which are otherwise queued but never
+# delivered (eventAdmin.sendReminder throws rather than reporting a false send).
+npx convex env set RESEND_API_KEY   re_xxx
+npx convex env set EVENT_FROM_EMAIL "RITAA <alumni@ritrjpm.ac.in>"
 ```
+
+> ### Without a provider, nobody can sign in
+>
+> **Google and LinkedIn are the only two ways into the portal.** Email-and-password
+> and one-time codes were removed: a members' directory is only worth joining if
+> the people in it are who they say they are, and a provider-confirmed identity
+> arrives with a real name and a working address attached. LinkedIn additionally
+> brings across the employer and designation the directory asks for.
+>
+> The consequence is that there is **no fallback**. With neither provider's
+> credentials set, no one can open a session — not members, and not the
+> association. `auth.configuredAuthMethods` reports this; `/join` says it in plain
+> words instead of showing two buttons that fail on click, and `/admin` shows it as
+> a release blocker beside the access-control one.
+>
+> Set at least one pair before announcing the site.
 
 **`SITE_URL` must be the real HTTPS Vercel domain.** Better Auth uses it as its
 `baseURL` and trusted origin (`packages/backend/convex/auth.ts`). Left as
@@ -119,19 +143,46 @@ against a production deployment that holds real member data.
 
 ## 5. Before this is public
 
-Three things are genuinely unfinished, and the portal will hold real people's
+Four things are genuinely unfinished, and the portal will hold real people's
 personal data:
 
-1. **`/admin` is not access-gated.** The privileged queues return empty for
+1. **No sign-in provider may be configured.** See the warning in step 3 — this is
+   the difference between a site people can join and one nobody can. Check it with
+   `npx convex run auth:configuredAuthMethods`; `anyConfigured: false` means the
+   portal is closed.
+2. **`/admin` is not access-gated.** The privileged queues return empty for
    non-admins and every destructive mutation is `internalMutation`, so no visitor
    can approve content or change a role. But the route itself is a public URL and
    still discloses association-wide figures. Gate it with `authz.requireRole`
    before launch.
-2. **No activity logging.** Nothing records who approved a venture, changed a
+3. **No activity logging.** Nothing records who approved a venture, changed a
    role or edited a profile. There is currently no way to establish after the fact
    whether a record was tampered with.
-3. **Push notifications are not implemented** on web or native, despite being
-   named in the brief.
+4. **Push notifications are not implemented** on web or native, despite being
+   named in the brief. The two header counters — pending connection requests and
+   unread messages — are read live from the source tables, so nothing is missed
+   while a member is on the site; they just are not pushed when they are away.
+
+### The connection graph
+
+Connecting is a mutual, two-party edge in `connections`, and messaging in
+`conversations` / `directMessages`. Two properties are worth knowing before
+operating this:
+
+- **No email address is ever returned to a browser** by `network.ts` or
+  `messaging.ts`. The client's handles are an `alumniId` (to ask someone new) and a
+  `connectionId` (to answer, withdraw, remove, or open a thread); both are resolved
+  server-side. That is what lets a member keep their address private under module
+  2's opt-in rules and still be reachable. If you extend either module, keep that
+  invariant — the note at the top of `network.ts` explains it.
+- **Mutual-connection names come from a bounded walk** (`MAX_MUTUAL_WALK`, 250).
+  Past that ceiling the names are incomplete, and every query that can be truncated
+  returns `mutualsComplete: false` so the UI says "at least" rather than
+  under-reporting.
+
+`otpChallenges` survives in `schema.ts` with nothing writing to it, so an existing
+deployment can be pushed to without a destructive migration. Drop the table once
+you have confirmed it is empty on every deployment.
 
 Granting the first admin (there is no UI for this, by design):
 

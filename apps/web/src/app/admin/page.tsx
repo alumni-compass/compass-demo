@@ -4,6 +4,8 @@ import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useState, type ReactNode } from "react";
 
+import RosterImport from "@/components/roster-import";
+import VerificationQuestions from "@/components/verification-questions";
 import {
   Button,
   Card,
@@ -308,8 +310,10 @@ export default function AdminPage() {
   const pendingVerifications = useQuery(api.adminOps.pendingVerifications);
   const pendingVentures = useQuery(api.adminOps.pendingVentures);
 
-  /** `emailOtp` is `Boolean(RESEND_API_KEY)` on the deployment — the mail gateway. */
+  /** Which of the two sign-in providers this deployment has credentials for. */
   const authMethods = useQuery(api.auth.configuredAuthMethods);
+  /** `Boolean(RESEND_API_KEY)` on the deployment — the transactional mail gateway. */
+  const mailer = useQuery(api.eventAdmin.mailerStatus);
 
   /* Role lookup. Committed on submit rather than per keystroke, so the page does
      not open a subscription for every half-typed address. */
@@ -336,7 +340,7 @@ export default function AdminPage() {
   const allocatedTotal = (campaigns ?? []).reduce((sum, c) => sum + c.allocated, 0);
   const unallocatedTotal = raisedTotal - allocatedTotal;
 
-  const emailGateway = authMethods === undefined ? undefined : authMethods.emailOtp;
+  const emailGateway = mailer === undefined ? undefined : mailer.configured;
 
   const contentRows = [
     {
@@ -384,7 +388,7 @@ export default function AdminPage() {
       would:
         "RSVP reminders for module 7, campaign updates and receipts for module 8, newsletter issues from module 6, and the decision note that closes a verification request.",
       blocker:
-        "npx convex env set RESEND_API_KEY re_… — the same key access.ts startOtp already needs before it will send a one-time code.",
+        "npx convex env set RESEND_API_KEY re_… — eventAdmin.sendReminder throws without it rather than reporting a reminder it never sent.",
     },
     {
       channel: "SMS",
@@ -662,6 +666,41 @@ export default function AdminPage() {
               why this screen hands you commands instead of buttons.
             </p>
           </div>
+
+          {/*
+            Sign-in is Google and LinkedIn only. With neither configured nobody can
+            open a session at all — including the association — so this is now the
+            second release blocker and belongs beside the first rather than buried
+            in the integrations table further down.
+          */}
+          {authMethods !== undefined && !authMethods.anyConfigured ? (
+            <div className="mt-4 border-l-2 border-maroon bg-white p-6">
+              <Eyebrow>Sign-in · release blocker</Eyebrow>
+              <p className="mt-3 max-w-3xl text-[0.95rem] leading-relaxed text-ink">
+                <strong className="font-semibold">
+                  No sign-in provider is configured.
+                </strong>{" "}
+                Google and LinkedIn are the only two ways into the portal and
+                neither has credentials on this deployment, so no one can sign in —
+                every member-only surface is unreachable, including this panel once
+                it is gated.
+              </p>
+              <pre className="font-mono mt-4 overflow-x-auto rounded-control bg-ink p-4 text-[0.72rem] leading-relaxed text-bone">
+                {`npx convex env set GOOGLE_CLIENT_ID        …
+npx convex env set GOOGLE_CLIENT_SECRET    …
+npx convex env set LINKEDIN_CLIENT_ID      …
+npx convex env set LINKEDIN_CLIENT_SECRET  …`}
+              </pre>
+              <p className="mt-3 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
+                Each provider registers itself the moment both of its values are
+                present — see <code className="font-mono">auth.ts</code>. Register{" "}
+                <code className="font-mono">
+                  &lt;SITE_URL&gt;/api/auth/callback/google
+                </code>{" "}
+                and the LinkedIn equivalent as redirect URIs with each provider.
+              </p>
+            </div>
+          ) : null}
         </Shell>
       </section>
 
@@ -747,6 +786,35 @@ export default function AdminPage() {
           </div>
         </section>
       </Shell>
+
+      {/* ---- Student roster import --------------------------------------
+          Placed before member management because it is what makes that queue
+          checkable: once the college's own record is here, a claimed roll number
+          can be verified against it instead of taken on trust. */}
+      <Shell>
+        <section id="roster" className="py-16 sm:py-20">
+          <SectionHead
+            eyebrow="Student database"
+            title="Import the college's own record"
+            lede="Upload the association's department spreadsheets. The file is read in this browser, then every cell is re-validated on the server before anything is written — so the report you get is what the server actually decided, not what the page guessed."
+          />
+          <RosterImport />
+        </section>
+      </Shell>
+
+      {/* ---- Verification questions -------------------------------------
+          Beside member management, because these questions are what the queue
+          there gives an admin to check. */}
+      <section className="border-t border-line bg-bone-deep">
+        <Shell className="py-16 sm:py-20">
+          <SectionHead
+            eyebrow="Verification form"
+            title="What every applicant is asked"
+            lede="Roll number, batch, department and graduation year are fixed fields on every request. Anything else the office wants to cross-check, add here — it appears on /join and the answers arrive with the request."
+          />
+          <VerificationQuestions />
+        </Shell>
+      </section>
 
       {/* ---- Member management ------------------------------------------ */}
       <section className="border-y border-line bg-white">
@@ -1372,13 +1440,11 @@ export default function AdminPage() {
 
           <p className="mt-6 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
             The email row reads{" "}
-            <code className="font-mono">
-              api.auth.configuredAuthMethods().emailOtp
-            </code>
-            , which is <code className="font-mono">Boolean(RESEND_API_KEY)</code> on
-            the Convex deployment — the same key{" "}
-            <code className="font-mono">access.ts startOtp</code> needs before it
-            will send a one-time code.{" "}
+            <code className="font-mono">api.eventAdmin.mailerStatus()</code>, which
+            is <code className="font-mono">Boolean(RESEND_API_KEY)</code> on the
+            Convex deployment — the key{" "}
+            <code className="font-mono">eventAdmin.sendReminder</code> needs before a
+            queued reminder can leave the building.{" "}
             {emailGateway === undefined
               ? "Reading it now."
               : emailGateway

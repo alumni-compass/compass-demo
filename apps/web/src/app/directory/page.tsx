@@ -1,18 +1,22 @@
 "use client";
 
 import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useDeferredValue, useState, type ReactNode } from "react";
 
+import ConnectAction, { type EdgeState } from "@/components/connect-action";
 import {
   Button,
+  DegreeMark,
   Empty,
   Eyebrow,
   LoadingRows,
   Monogram,
+  MutualNote,
   PageHeader,
   Pill,
   SectionHead,
@@ -20,12 +24,13 @@ import {
   Stat,
   VerifiedMark,
 } from "@/components/kit";
+// RITAA is no longer imported here: its only use was the introduction email that
+// `connectMailto` composed, and connecting is a real edge in the graph now.
 import {
   BATCH_YEARS,
   DEPARTMENT_NAMES,
   DEPARTMENTS,
   REGIONS,
-  RITAA,
 } from "@/lib/site";
 
 /**
@@ -69,31 +74,18 @@ function shortBatch(batch: number) {
   return `’${String(batch).slice(2)}`;
 }
 
-/**
- * "Request connect" without a messaging backend: a prefilled mail draft. Only
- * reachable when the member published an address, so `email` is a string here.
+/*
+ * A `connectMailto` helper used to live here, composing an introduction email
+ * because the portal had no way to carry a message. It also meant "Request
+ * connect" was disabled for any member who had kept their address private — so
+ * the members most careful with their contact details were the least reachable,
+ * which is exactly backwards.
+ *
+ * Connecting is a real edge in the graph now. `network.requestConnection` takes
+ * the member's directory id and resolves the address on the server, so a private
+ * address is no obstacle and no address reaches the browser at all. The control
+ * itself is components/connect-action.tsx.
  */
-function connectMailto(person: {
-  name: string;
-  email: string;
-  batch: number;
-  department: string;
-}) {
-  const subject = `${RITAA.shortName} — introduction request`;
-  const body = [
-    `Hello ${person.name},`,
-    "",
-    `I found your profile in the ${RITAA.shortName} alumni directory (${person.department}, batch ${person.batch}).`,
-    "",
-    "I would like to connect about:",
-    "",
-    "",
-    `Sent from ${RITAA.website}`,
-  ].join("\n");
-  return `mailto:${person.email}?subject=${encodeURIComponent(
-    subject,
-  )}&body=${encodeURIComponent(body)}`;
-}
 
 /** Labelled control wrapper — every filter has a real, visible label. */
 function Field({
@@ -175,6 +167,23 @@ export default function DirectoryPage() {
           <Suspense fallback={<LoadingRows rows={4} />}>
             <DirectoryFromUrl total={stats?.alumni} />
           </Suspense>
+
+          {/* The other register. Linked from here because this is the page
+              somebody is on when the directory does not have who they want. */}
+          <div className="mt-12 rounded-card border border-line bg-surface p-6 shadow-card">
+            <Eyebrow>Not in the directory?</Eyebrow>
+            <p className="mt-2 max-w-2xl text-[0.9rem] leading-relaxed text-slate-ink">
+              The directory lists members who have written a profile. The student
+              database is the college&rsquo;s own record of everyone who studied
+              here — searchable by name, roll number or college address, whether or
+              not they have ever signed in.
+            </p>
+            <div className="mt-4">
+              <Button href="/students" variant="outline" size="sm">
+                Search the student database
+              </Button>
+            </div>
+          </div>
         </section>
       </Shell>
     </>
@@ -314,6 +323,21 @@ function DirectoryBrowser({
   // Ordering is the server's: relevance for a name query, newest cohort first
   // otherwise. Nothing is re-filtered or re-sorted here.
   const rows = results ?? [];
+
+  /*
+   * The caller's relationship to every row on screen, in ONE subscription rather
+   * than one per card. `network.edgeStates` reads the caller's whole graph once
+   * and answers from memory, so this costs the same whether the page is showing
+   * one member or a hundred — a per-card query would be a hundred subscriptions
+   * and a hundred re-renders every time any edge anywhere changed.
+   *
+   * Keyed by directory id in both directions, so no address is involved.
+   * Returns the empty shape when signed out instead of throwing, which is what
+   * keeps the directory readable without an account.
+   */
+  const edges = useQuery(api.network.edgeStates, {
+    alumniIds: rows.map((person) => person._id),
+  });
 
   const active: FilterChip[] = [];
   if (text.trim().length > 0) {
@@ -566,7 +590,14 @@ function DirectoryBrowser({
           }`}
         >
           {rows.map((person) => (
-            <MemberCard key={person._id} person={person} />
+            <MemberCard
+              key={person._id}
+              person={person}
+              state={edges?.states[person._id]}
+              connectionId={edges?.connectionIds[person._id]}
+              mutuals={edges?.mutualNames[person._id]}
+              mutualsComplete={edges?.mutualsComplete ?? true}
+            />
           ))}
         </ul>
       )}
@@ -576,16 +607,19 @@ function DirectoryBrowser({
         <Eyebrow>Connecting</Eyebrow>
         <p className="mt-2 text-[0.85rem] leading-relaxed text-slate-ink">
           <span className="text-ink">View profile</span> opens the full member
-          record. <span className="text-ink">Request connect</span> opens a
-          prefilled introduction email and is disabled when the member kept their
-          address private — RITAA does not relay messages on anyone&rsquo;s behalf.
+          record. <span className="text-ink">Connect</span> sends a real request
+          inside the portal — it works whether or not the member publishes an email
+          address, because the request is delivered to their account rather than to
+          their inbox.
         </p>
-        <p className="mt-3 flex flex-wrap items-center gap-2 text-[0.85rem] leading-relaxed text-slate-ink">
-          <Pill>Messaging · Not available</Pill>
-          <span>
-            In-portal messaging is optional in the brief and is not part of this
-            release.
-          </span>
+        <p className="mt-3 text-[0.85rem] leading-relaxed text-slate-ink">
+          Nothing is shared until they accept. Once they do, the button becomes{" "}
+          <span className="text-ink">Message</span> and a direct thread opens in{" "}
+          <Link href="/messages" className={LINK}>
+            Messages
+          </Link>
+          . Where a member you are connected to also knows this one, their name
+          appears on the card — that is who to ask for the introduction.
         </p>
         <p className="mt-3 text-[0.85rem] leading-relaxed text-slate-ink">
           Members choose which fields stay public. &ldquo;{NOT_SHARED}&rdquo;
@@ -599,26 +633,28 @@ function DirectoryBrowser({
 }
 
 /**
- * One result row, carrying the brief's connection features: view profile,
- * request connect, and whichever channels the member chose to publish.
+ * One result row: the member, the fields they chose to publish, whether you are
+ * connected, and who you both already know.
  *
- * Computing the mail draft here rather than inside the click handler is what
- * makes `email` provably a string at the point it is used — the disabled
- * control is not a styling state, it is the other half of the same check.
+ * The relationship arrives as props rather than as this card's own query — the
+ * list holds one `network.edgeStates` subscription for every row, so a grid of a
+ * hundred members is one subscription and not a hundred.
  */
-function MemberCard({ person }: { person: Member }) {
-  const mailto =
-    person.email === null
-      ? null
-      : connectMailto({
-          name: person.name,
-          email: person.email,
-          batch: person.batch,
-          department: person.department,
-        });
-
+function MemberCard({
+  person,
+  state,
+  connectionId,
+  mutuals,
+  mutualsComplete,
+}: {
+  person: Member;
+  state: EdgeState | undefined;
+  connectionId: Id<"connections"> | undefined;
+  mutuals: string[] | undefined;
+  mutualsComplete: boolean;
+}) {
   return (
-    <li className="bg-white p-6">
+    <li className="bg-surface p-6 transition-colors hover:bg-bone/60">
       <div className="flex items-start gap-4">
         <Monogram name={person.name} size="md" />
         <div className="min-w-0 flex-1">
@@ -632,9 +668,13 @@ function MemberCard({ person }: { person: Member }) {
               </Link>
             </h3>
             {person.verified ? <VerifiedMark /> : null}
+            {state === "connected" ? <DegreeMark degree={1} /> : null}
+            {state !== "connected" && mutuals && mutuals.length > 0 ? (
+              <DegreeMark degree={2} />
+            ) : null}
             {person.openToMentor ? <Pill tone="jade">Mentors</Pill> : null}
           </div>
-          <p className="font-mono mt-1.5 text-[0.7rem] uppercase tracking-[0.1em] tabular-nums text-brass">
+          <p className="font-mono mt-1.5 text-[0.7rem] uppercase tracking-[0.1em] tabular-nums text-brass-ink">
             {person.department} · {shortBatch(person.batch)}
           </p>
           <p className="mt-2 text-[0.9rem] leading-snug text-ink">
@@ -664,6 +704,15 @@ function MemberCard({ person }: { person: Member }) {
               )}
             </MetaRow>
           </dl>
+
+          {/* THE SIGNATURE: who you both know, named. Only where a mutual exists
+              and you are not already connected — a mutual is meaningless for
+              someone you already know. */}
+          {state !== "connected" && mutuals && mutuals.length > 0 ? (
+            <div className="mt-3">
+              <MutualNote names={mutuals} complete={mutualsComplete} />
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -685,30 +734,19 @@ function MemberCard({ person }: { person: Member }) {
       <div className="mt-5 flex flex-wrap items-center gap-2 border-t border-line pt-4">
         {/* kit's Href alias is Link's non-generic href, which cannot express a
             dynamic segment; the URL-object form can. */}
-        <Button href={{ pathname: `/directory/${person._id}` }} variant="outline">
+        <Button
+          href={{ pathname: `/directory/${person._id}` }}
+          variant="outline"
+          size="sm"
+        >
           View profile
         </Button>
-        {mailto === null ? (
-          // A disabled control still has to say why, and title alone is not
-          // reachable from the keyboard — hence the screen-reader line too.
-          <span
-            title="This member kept their email address private, so an introduction cannot be drafted here."
-            className="inline-flex"
-          >
-            <Button disabled>
-              Request connect
-              <span className="sr-only">— email not shared by this member</span>
-            </Button>
-          </span>
-        ) : (
-          <Button
-            onClick={() => {
-              window.location.href = mailto;
-            }}
-          >
-            Request connect
-          </Button>
-        )}
+        <ConnectAction
+          alumniId={person._id}
+          name={person.name}
+          state={state}
+          connectionId={connectionId}
+        />
       </div>
     </li>
   );

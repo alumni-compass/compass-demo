@@ -6,23 +6,58 @@
  * Palette is taken from the RIT crest in the association's letterhead — crest
  * maroon and a navy ink — with institutional brass for data and eyebrow labels.
  *
- * Type is the platform system font throughout — Segoe UI on Windows, San
- * Francisco on Apple, Roboto on Android. Nothing is downloaded, so there is no
- * webfont request and no flash of unstyled text, and the portal reads like the
- * operating system around it rather than like a styled brochure.
+ * WHAT CHANGED IN THIS PASS, and why:
+ *
+ *  1. Maroon lifted from #8c1d2c to #9B1C31. The old value sat close enough to
+ *     brown that it read as ink rather than as the association's colour, and
+ *     maroon is now doing real work: it is the Connect action, so it has to
+ *     look like a decision.
+ *  2. Brass split in two. #B8863B on white is about 3:1, which fails AA for the
+ *     small uppercase eyebrow labels it was being used for. `brass` stays for
+ *     rules, bars and fills — decoration, where contrast ratios do not apply —
+ *     and `brass-ink` (#8A6220, 5.4:1) is the one used for text.
+ *  3. A real monospace stack for --font-mono. All four font variables previously
+ *     pointed at the same system face, so `font-mono` on a label was a lie and
+ *     the tabular figures the stat rows and admin tables ask for were not
+ *     actually available. Still zero downloads.
+ *  4. Radius and elevation scales. Everything was 0px with 1px rules, which
+ *     reads as a printed document. A network is software people use, so cards
+ *     have a radius and lift on hover; the hairline rules stay for tables and
+ *     dividers, where they are correct.
+ *
+ * LIGHT ONLY, DELIBERATELY. The portal commits to the letterhead palette, so
+ * the surface tokens are redefined identically under `.dark` — that keeps the
+ * shared shadcn primitives in `packages/ui` from flipping to their dark theme
+ * and producing a half-dark page. A real dark mode means auditing twenty routes;
+ * until that is done, one consistent palette beats two inconsistent ones.
  */
 @theme {
-  --color-ink: #14192b;
-  --color-ink-soft: #1f273d;
-  --color-maroon: #8c1d2c;
-  --color-maroon-deep: #6d1522;
+  --color-ink: #151a2e;
+  --color-ink-soft: #202940;
+  --color-ink-muted: #2c364f;
+
+  --color-maroon: #9b1c31;
+  --color-maroon-deep: #7d1526;
+  --color-maroon-tint: #f7ebed;
+
+  /* Decoration only — rules, bars, fills. Fails AA as text; use brass-ink. */
   --color-brass: #b8863b;
-  --color-brass-soft: #d9b878;
-  --color-bone: #f6f4ef;
-  --color-bone-deep: #ebe7de;
+  --color-brass-ink: #8a6220;
+  --color-brass-soft: #e3c88f;
+
+  --color-bone: #f7f5f0;
+  --color-bone-deep: #ece8df;
+  --color-surface: #ffffff;
+  --color-surface-sunk: #f2efe8;
+
   --color-slate-ink: #5a6273;
-  --color-jade: #1f6f5c;
-  --color-line: #ddd8cc;
+  --color-slate-soft: #858c9c;
+
+  --color-jade: #0f6b57;
+  --color-jade-tint: #e7f2ef;
+
+  --color-line: #e2ddd1;
+  --color-line-strong: #cfc8b8;
 
   /* The platform's own UI font — no webfont request, nothing decorative. */
   --font-system:
@@ -30,36 +65,80 @@
     "Noto Sans", sans-serif;
   --font-display: var(--font-system);
   --font-sans: var(--font-system);
-  --font-mono: var(--font-system);
+  /* A genuinely different voice for labels, counts and data. Still no download. */
+  --font-mono:
+    ui-monospace, "SF Mono", SFMono-Regular, "Cascadia Mono", "Segoe UI Mono",
+    "Roboto Mono", Menlo, Consolas, monospace;
+
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-chip: 999px;
+
+  --shadow-card: 0 1px 2px rgb(21 26 46 / 0.04), 0 1px 3px rgb(21 26 46 / 0.06);
+  --shadow-lift:
+    0 4px 6px -2px rgb(21 26 46 / 0.06), 0 12px 24px -8px rgb(21 26 46 / 0.14);
+  --shadow-panel: 0 1px 2px rgb(21 26 46 / 0.05);
+  --shadow-sticky: 0 1px 24px -10px rgb(21 26 46 / 0.32);
+}
+
+/* See the note above: the institutional palette does not invert. */
+.dark {
+  --background: #f7f5f0;
+  --foreground: #151a2e;
+  --card: #ffffff;
+  --card-foreground: #151a2e;
+  --popover: #ffffff;
+  --popover-foreground: #151a2e;
+  --primary: #9b1c31;
+  --primary-foreground: #f7f5f0;
+  --secondary: #f2efe8;
+  --secondary-foreground: #151a2e;
+  --muted: #f2efe8;
+  --muted-foreground: #5a6273;
+  --accent: #f7ebed;
+  --accent-foreground: #7d1526;
+  --border: #e2ddd1;
+  --input: #e2ddd1;
+  --ring: #9b1c31;
 }
 
 @layer base {
   html {
     scroll-behavior: smooth;
+    /* Keeps a hash-linked section clear of the sticky header. */
+    scroll-padding-top: 5rem;
   }
 
   body {
+    /* A barely-there warm gradient, so the page reads as paper with light on it
+       rather than as one flat fill. */
     background-color: var(--color-bone);
+    background-image: linear-gradient(
+      to bottom,
+      #fbfaf7 0%,
+      var(--color-bone) 420px
+    );
+    background-repeat: no-repeat;
     color: var(--color-ink);
     font-family: var(--font-sans);
     font-size: 1rem;
     line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
   }
 
   /* Headings: semibold with slightly tight tracking so larger sizes stay
      deliberate rather than looking like scaled-up body text. */
   .font-display {
     font-weight: 600;
-    letter-spacing: -0.011em;
+    letter-spacing: -0.014em;
   }
 
-  /* The label/number style. Everything is one system face now, so the wide
-     uppercase tracking is what marks these as labels; tabular figures keep
-     numbers aligned down the stat rows and admin tables. */
+  /* The label/number voice. Now a real mono face, so tabular figures actually
+     apply down the stat rows, the batch rail and the admin tables. */
   .font-mono {
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
   }
-
 
   ::selection {
     background-color: var(--color-brass-soft);
@@ -70,7 +149,7 @@
   :focus-visible {
     outline: 2px solid var(--color-maroon);
     outline-offset: 2px;
-    border-radius: 2px;
+    border-radius: 3px;
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -95,7 +174,7 @@
   .batch-rail-spine {
     background-image: repeating-linear-gradient(
       to right,
-      var(--color-line) 0 1px,
+      var(--color-line-strong) 0 1px,
       transparent 1px 12px
     );
   }
@@ -115,7 +194,7 @@
     background-image:
       radial-gradient(
         circle at 15% 20%,
-        rgb(140 29 44 / 0.28) 0%,
+        rgb(155 28 49 / 0.3) 0%,
         transparent 45%
       ),
       radial-gradient(
@@ -123,5 +202,63 @@
         rgb(184 134 59 / 0.18) 0%,
         transparent 40%
       );
+  }
+
+  /*
+   * Cards that are also links or actions. The lift is 1px — enough to say
+   * "this responds", not enough to make a grid of them look like it is floating.
+   */
+  .card-interactive {
+    transition:
+      box-shadow 160ms ease,
+      transform 160ms ease,
+      border-color 160ms ease;
+  }
+  .card-interactive:hover {
+    border-color: var(--color-line-strong);
+    box-shadow: var(--shadow-lift);
+    transform: translateY(-1px);
+  }
+
+  /*
+   * THE SIGNATURE ELEMENT — the mutual-connection marker.
+   *
+   * LinkedIn shows an abstract degree ("2nd") because it has no shared context
+   * to offer beyond it. Two RIT graduates always have one: a named person who
+   * knows them both, with a batch and a department attached. So the marker names
+   * that person instead of counting hops, because "Priya '21 CSE knows you both"
+   * is the actual reason an introduction lands and "2nd" is not.
+   *
+   * The brass hairline on the left is the join in the graph, drawn as a rule
+   * rather than as an icon: it is the same visual grammar as the batch rail,
+   * which is the other place this portal draws a relationship.
+   */
+  .mutual-marker {
+    position: relative;
+    padding-left: 0.875rem;
+  }
+  .mutual-marker::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.5em;
+    width: 0.5rem;
+    height: 1px;
+    background-color: var(--color-brass);
+  }
+
+  /* Count badge on the header's network and message links. */
+  .count-badge {
+    min-width: 1.125rem;
+    height: 1.125rem;
+    padding: 0 0.25rem;
+    border-radius: var(--radius-chip);
+    background-color: var(--color-maroon);
+    color: var(--color-bone);
+    font-family: var(--font-mono);
+    font-size: 0.625rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.125rem;
+    text-align: center;
   }
 }

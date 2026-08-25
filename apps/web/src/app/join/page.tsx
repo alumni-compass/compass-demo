@@ -12,21 +12,17 @@ import { type FormEvent, useEffect, useState } from "react";
 import { toast } from "sonner";
 import z from "zod";
 
+import { MethodPills, SocialButtons } from "@/components/sign-in-card";
 import {
   actionErrorMessage,
-  AccountPanel,
-  errorClass,
-  hintClass,
-  inputClass,
-  labelClass,
-  OtpPanel,
-} from "@/components/auth-panels";
-import { OrDivider, SocialButtons } from "@/components/sign-in-card";
-import {
   Button,
   Card,
   Empty,
+  errorClass,
   Eyebrow,
+  hintClass,
+  inputClass,
+  labelClass,
   LoadingRows,
   Monogram,
   PageHeader,
@@ -198,6 +194,15 @@ function VerificationForm({
   defaultEmail: string;
 }) {
   const requestVerification = useMutation(api.access.requestVerification);
+  /*
+   * The association's own extra questions, authored on /admin. Fetched rather
+   * than hardcoded, so adding one there changes this form with no code change.
+   * Saved by a separate mutation from the fixed fields, so correcting one answer
+   * never means re-filing the whole request.
+   */
+  const extraQuestions = useQuery(api.questions.verificationQuestions);
+  const answerQuestions = useMutation(api.questions.answerVerificationQuestions);
+  const [answers, setAnswers] = useState<Record<string, string>>({});
 
   const [form, setForm] = useState<VerifyForm>({
     ...EMPTY_VERIFY,
@@ -251,6 +256,22 @@ function VerificationForm({
         rollNumber: form.rollNumber.trim(),
         graduationYear: Number(form.graduationYear),
       });
+      /*
+       * The request is filed first and the answers second, deliberately. If the
+       * answers fail validation the request still exists and the member can
+       * correct one field, rather than losing a completed form to a rejected
+       * optional extra.
+       */
+      const supplied = (extraQuestions ?? [])
+        .map((question) => ({
+          questionId: question._id,
+          answer: (answers[question._id] ?? "").trim(),
+        }))
+        .filter((entry) => entry.answer.length > 0);
+      if (supplied.length > 0) {
+        await answerQuestions({ answers: supplied });
+      }
+
       onFiled(email);
       toast.success(
         result.alreadyVerified
@@ -446,6 +467,80 @@ function VerificationForm({
               ) : null}
             </div>
           </div>
+
+          {/* ---- The association's own extra questions -------------------
+              Authored on /admin, so this block appears only once there is
+              something to ask and disappears again if every question is
+              retired. */}
+          {extraQuestions && extraQuestions.length > 0 ? (
+            <div className="mt-6 rounded-card border border-line bg-bone p-5">
+              <Eyebrow>Also asked by the association</Eyebrow>
+              <p className="mt-2 text-[0.82rem] leading-relaxed text-slate-ink">
+                These go to the office with your request, so it can cross-check
+                more than the roll number alone.
+              </p>
+              <div className="mt-5 space-y-5">
+                {extraQuestions.map((question) => (
+                  <div key={question._id}>
+                    <label className={labelClass} htmlFor={`vq-${question._id}`}>
+                      {question.prompt}
+                      {question.required ? (
+                        <span className="text-maroon"> *</span>
+                      ) : (
+                        <span className="text-slate-soft"> (optional)</span>
+                      )}
+                    </label>
+
+                    {question.kind === "choice" ? (
+                      <select
+                        id={`vq-${question._id}`}
+                        value={answers[question._id] ?? ""}
+                        onChange={(event) =>
+                          setAnswers((prev) => ({
+                            ...prev,
+                            [question._id]: event.target.value,
+                          }))
+                        }
+                        className={`${inputClass} mt-2`}
+                      >
+                        <option value="">Choose one</option>
+                        {question.options.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    ) : question.kind === "longText" ? (
+                      <textarea
+                        id={`vq-${question._id}`}
+                        rows={3}
+                        value={answers[question._id] ?? ""}
+                        onChange={(event) =>
+                          setAnswers((prev) => ({
+                            ...prev,
+                            [question._id]: event.target.value,
+                          }))
+                        }
+                        className={`${inputClass} mt-2 resize-none`}
+                      />
+                    ) : (
+                      <input
+                        id={`vq-${question._id}`}
+                        value={answers[question._id] ?? ""}
+                        onChange={(event) =>
+                          setAnswers((prev) => ({
+                            ...prev,
+                            [question._id]: event.target.value,
+                          }))
+                        }
+                        className={`${inputClass} mt-2`}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="mt-5 border border-line bg-bone p-4">
             <div className="flex gap-3">
@@ -768,63 +863,45 @@ export default function JoinPage() {
     sessionEmail ? { email: sessionEmail } : {},
   );
 
-  const methodPills: Array<{ label: string; live: boolean | undefined }> = [
-    { label: "Email + password", live: methods?.emailPassword },
-    { label: "Google", live: methods?.google },
-    { label: "LinkedIn", live: methods?.linkedin },
-    { label: "One-time code", live: methods?.emailOtp },
-  ];
-
   return (
     <>
       <PageHeader
-      image="/campus-1.jpg"
+        image="/campus-1.jpg"
         module="Module 01 · User roles & access"
         title="Join the association."
-        lede="Create an account, confirm the email address you used, and give the association the details it needs to verify you as an RIT graduate. All three steps are on this page, and each one reports its real state rather than a hopeful one."
+        lede="Sign in with Google or LinkedIn, then give the association the details it needs to verify you as an RIT graduate. Two steps, and each one reports its real state rather than a hopeful one."
       >
-        <div className="flex flex-wrap gap-2">
-          {methodPills.map((pill) => (
-            <Pill key={pill.label} tone="dark">
-              {pill.label} ·{" "}
-              {methods === undefined
-                ? "checking"
-                : pill.live
-                  ? "live"
-                  : "not configured"}
-            </Pill>
-          ))}
-        </div>
+        <MethodPills />
       </PageHeader>
 
-      {/* ---- Sign up / log in -------------------------------------------
-          Single narrow column, social first then an "or" rule then the email
-          form. One decision at a time reads calmer than two panels side by
-          side, and it puts the one-click route where members look first. */}
+      {/* ---- Sign in -----------------------------------------------------
+          One narrow column and two buttons. There is no email form to fall
+          back to any more, so there is no "or" rule and no second decision:
+          the member picks the account they already have. */}
       <Shell>
         <section className="py-16 sm:py-20">
           <AuthLoading>
             <div className="mx-auto max-w-md">
-              <LoadingRows rows={4} />
+              <LoadingRows rows={3} />
             </div>
           </AuthLoading>
 
           <Unauthenticated>
             <div className="mx-auto max-w-md">
               <div className="text-center">
-                <Eyebrow>Login &amp; signup</Eyebrow>
+                <Eyebrow>Sign in or sign up</Eyebrow>
                 <h2 className="font-display mt-2 text-2xl leading-snug text-ink">
-                  Choose any one of the following
+                  One click, with an account you already have
                 </h2>
                 <p className="mt-2 text-[0.9rem] leading-relaxed text-slate-ink">
-                  Build your profile with a click, or use an email and password.
+                  The same button signs you in and creates your account. LinkedIn
+                  also brings across the employer and designation this directory
+                  asks for.
                 </p>
               </div>
 
-              <div className="mt-8 border border-line bg-white p-6 sm:p-7">
+              <div className="mt-8 rounded-card border border-line bg-surface p-6 shadow-card sm:p-7">
                 <SocialButtons methods={methods} />
-                <OrDivider />
-                <AccountPanel />
               </div>
 
               <p className="mt-5 text-center text-[0.8rem] leading-relaxed text-slate-ink">
@@ -864,58 +941,60 @@ export default function JoinPage() {
         </section>
       </Shell>
 
-      {/* ---- OTP --------------------------------------------------------- */}
-      <section className="border-y border-line bg-white">
+      {/* ---- Why sign in at all -----------------------------------------
+          This replaced the one-time-code section. A code only ever proved
+          control of an email address, which the two providers now confirm
+          themselves, so the step was verifying something already verified. The
+          space is better spent saying what a session actually opens up. */}
+      <section className="border-y border-line bg-surface">
         <Shell className="py-16 sm:py-20">
           <SectionHead
-            eyebrow="OTP verification"
-            title="Confirm the email address you used"
-            lede="A one-time code is how the association makes sure a working mailbox sits behind every account before it sends verification correspondence or event reminders to it."
+            eyebrow="What an account opens"
+            title="Signing in is what makes the directory two-way"
+            lede="Without a session the portal is a list of names. With one it is a network: you can ask to connect, answer requests, and message the members who accepted."
           />
-          <div className="grid gap-px border border-line bg-line lg:grid-cols-[1.05fr_1fr]">
-            <div className="bg-white p-7">
-              <OtpPanel methods={methods} />
-            </div>
-            <div className="bg-white p-7">
-              <Eyebrow>How the code behaves</Eyebrow>
-              <div className="mt-5 grid grid-cols-3 gap-4 sm:gap-6">
-                <Stat value="10 min" label="Code validity" />
-                <Stat value="5" label="Attempts per code" />
-                <Stat value="60 s" label="Resend cooldown" />
+          <div className="grid gap-px overflow-hidden rounded-card border border-line bg-line lg:grid-cols-3">
+            {[
+              {
+                t: "Connect",
+                c: "Ask any member to connect, with a note saying why. Nothing is shared until they accept, and either of you can undo it afterwards.",
+                href: "/network" as const,
+                cta: "Your network",
+              },
+              {
+                t: "Message",
+                c: "Accepting opens a direct thread inside the portal. No phone number changes hands — what other members can see stays yours to set on your profile.",
+                href: "/messages" as const,
+                cta: "Your messages",
+              },
+              {
+                t: "Be findable",
+                c: "Your batch, department and employer are what other graduates search by. A profile you have filled in is the difference between being listed and being found.",
+                href: "/profile" as const,
+                cta: "Your profile",
+              },
+            ].map((item) => (
+              <div key={item.t} className="flex flex-col bg-surface p-7">
+                <h3 className="font-display text-xl leading-snug text-ink">
+                  {item.t}
+                </h3>
+                <p className="mt-2.5 flex-1 text-[0.9rem] leading-relaxed text-slate-ink">
+                  {item.c}
+                </p>
+                <div className="mt-6">
+                  <Button href={item.href} variant="outline" size="sm">
+                    {item.cta}
+                  </Button>
+                </div>
               </div>
+            ))}
+          </div>
 
-              <dl className="mt-8 divide-y divide-line border-y border-line">
-                <div className="py-4">
-                  <dt className="font-mono text-[0.7rem] uppercase tracking-[0.12em] text-brass">
-                    What a confirmed code proves
-                  </dt>
-                  <dd className="mt-2 text-[0.9rem] leading-relaxed text-ink">
-                    That you can read mail sent to that address. Nothing more.
-                  </dd>
-                </div>
-                <div className="py-4">
-                  <dt className="font-mono text-[0.7rem] uppercase tracking-[0.12em] text-brass">
-                    What it does not do
-                  </dt>
-                  <dd className="mt-2 text-[0.9rem] leading-relaxed text-ink">
-                    It does not sign you in. The better-auth server on this
-                    deployment has no OTP sign-in plugin configured, so a session
-                    still comes from your password or a social provider. Anything
-                    else on this page would be a lie about how you got in.
-                  </dd>
-                </div>
-                <div className="py-4">
-                  <dt className="font-mono text-[0.7rem] uppercase tracking-[0.12em] text-brass">
-                    How it is stored
-                  </dt>
-                  <dd className="mt-2 text-[0.9rem] leading-relaxed text-ink">
-                    Only a SHA-256 hash of the code, salted with your address, ever
-                    reaches the database. Requesting a new code deletes the previous
-                    one, and a used code cannot be replayed.
-                  </dd>
-                </div>
-              </dl>
-            </div>
+          <div className="mt-10 grid grid-cols-2 gap-6 sm:grid-cols-4">
+            <Stat value="2" label="Ways to sign in" />
+            <Stat value="Mutual" label="Every connection" />
+            <Stat value="Opt-in" label="Contact details" />
+            <Stat value="Server-side" label="Where privacy is enforced" />
           </div>
         </Shell>
       </section>

@@ -23,6 +23,16 @@ import { formatDate, formatEventDate, RITAA } from "@/lib/site";
 /** Where a signed-in member most often wants to go next. */
 const SHORTCUTS = [
   {
+    href: "/network",
+    title: "Your network",
+    copy: "Answer connection requests, see who you are connected to, and find graduates you should know.",
+  },
+  {
+    href: "/messages",
+    title: "Messages",
+    copy: "Direct threads with the members who accepted. Nothing leaves the portal.",
+  },
+  {
     href: "/profile",
     title: "Your profile",
     copy: "Edit your details and choose which contact fields other members can see.",
@@ -72,6 +82,9 @@ function MemberDashboard() {
   );
   const events = useQuery(api.events.list, { window: "upcoming" });
   const stats = useQuery(api.directory.stats);
+  /* Both are session-derived — no argument names whose network to read. */
+  const myNetwork = useQuery(api.network.myNetwork);
+  const unread = useQuery(api.messaging.unreadCount);
 
   const nextEvent = (events ?? [])[0];
   const loading = user === undefined;
@@ -149,9 +162,43 @@ function MemberDashboard() {
         </div>
       ) : null}
 
-      {/* Association-wide numbers, live from Convex. */}
+      {/*
+        Requests waiting on this member, above the association-wide numbers,
+        because it is the only thing on this page that somebody else is blocked
+        on. It renders as a card rather than a counter for the same reason — a
+        number in a stat row reads as trivia, and this one needs answering.
+      */}
+      {myNetwork && myNetwork.counts.incoming > 0 ? (
+        <div className="mt-10">
+          <Card accent>
+            <div className="flex flex-wrap items-start justify-between gap-4 pt-4">
+              <div className="min-w-0">
+                <Eyebrow>Waiting on you</Eyebrow>
+                <h3 className="font-display mt-2 text-xl text-ink">
+                  {myNetwork.counts.incoming === 1
+                    ? `${myNetwork.incoming[0]?.member.name ?? "A member"} asked to connect`
+                    : `${myNetwork.counts.incoming} members asked to connect`}
+                </h3>
+                <p className="mt-2 max-w-xl text-[0.9rem] leading-relaxed text-slate-ink">
+                  {myNetwork.counts.incoming === 1
+                    ? "Accepting opens a direct thread between you. Declining tells them nothing beyond that the request was answered."
+                    : "Answer them from your network page. Accepting opens a direct thread with each member."}
+                </p>
+              </div>
+              <Button href="/network">Review requests</Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
+      {/* Your own figures first, then the association's. */}
       <section className="py-12">
-        <div className="grid grid-cols-2 gap-8 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-6">
+          <Stat
+            value={myNetwork?.counts.connections ?? "—"}
+            label="Your connections"
+          />
+          <Stat value={unread ?? "—"} label="Unread messages" />
           <Stat value={stats?.alumni ?? "—"} label="Verified members" />
           <Stat value={stats?.mentors ?? "—"} label="Alumni mentoring" />
           <Stat value={stats?.companies ?? "—"} label="Companies" />

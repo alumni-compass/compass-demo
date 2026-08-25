@@ -72,11 +72,13 @@ export default defineSchema({
   }).index("by_email", ["email"]),
 
   /**
-   * Module 1 — OTP verification.
+   * Module 1 — RETIRED.
    *
-   * Only a hash of the code is stored, never the code itself, so a database
-   * read cannot be replayed as a login. Rows carry an expiry and an attempt
-   * counter to make brute-forcing a six-digit code impractical.
+   * Sign-in is Google and LinkedIn only, so there is no OTP challenge to store
+   * and nothing writes to this table any more. The definition is kept so an
+   * existing deployment can be pushed to without a destructive migration —
+   * removing a table that still holds documents fails the push. Drop it once
+   * `npx convex run --no-push` confirms the table is empty on every deployment.
    */
   otpChallenges: defineTable({
     email: v.string(),
@@ -87,6 +89,357 @@ export default defineSchema({
     consumedAt: v.optional(v.number()),
     createdAt: v.number(),
   }).index("by_email", ["email"]),
+
+  /**
+   * The connection graph — one alumnus asking to be connected to another.
+   *
+   * KEYED ON EMAIL, not on an `alumni` id, for two reasons. A member has a
+   * session before they have a directory profile, so a request must be able to
+   * name someone who has not filled in their profile yet. And every other
+   * member-keyed table here already keys on email (`memberRoles`,
+   * `verificationRequests`, `jobs.postedByEmail`, `ventures.founderEmail`), so
+   * an id here would make this the one table that disagrees. Addresses are
+   * normalised to lowercase on write — see network.ts `normalise`.
+   *
+   * DIRECTION IS PRESERVED even after acceptance. `requesterEmail` is always the
+   * person who asked, which is what lets the UI show "you asked" versus "they
+   * asked" and what makes withdraw and decline different actions.
+   *
+   * `by_pair` is queried in both orders (a→b and b→a) before a request is
+   * written, because a pair has no canonical direction while it is pending. Two
+   * point lookups is the cost of not inventing a canonical ordering that
+   * `status` would then have to be interpreted against.
+   */
+  connections: defineTable({
+    requesterEmail: v.string(),
+    recipientEmail: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("declined"),
+    ),
+    /** The note that came with the request. Read once, on the request card. */
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+    respondedAt: v.optional(v.number()),
+  })
+    .index("by_pair", ["requesterEmail", "recipientEmail"])
+    .index("by_requester", ["requesterEmail", "status"])
+    .index("by_recipient", ["recipientEmail", "status"]),
+
+  /**
+   * One thread between two connected members.
+   *
+   * The pair is stored SORTED — `participantA` is always the
+   * lexicographically smaller address — so a thread has exactly one identity
+   * and `by_pair` is a single lookup rather than a query in each direction.
+   * Unlike `connections`, nothing here needs to know who started it, so there is
+   * no direction to lose.
+   *
+   * `lastMessageAt` and `lastMessagePreview` are denormalised onto the row so the
+   * inbox renders from one index scan instead of reading every thread's messages.
+   */
+  conversations: defineTable({
+    participantA: v.string(),
+    participantB: v.string(),
+    lastMessageAt: v.number(),
+    lastMessagePreview: v.string(),
+    lastSenderEmail: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_pair", ["participantA", "participantB"])
+    .index("by_a", ["participantA", "lastMessageAt"])
+    .index("by_b", ["participantB", "lastMessageAt"]),
+
+  /**
+   * Messages within a thread.
+   *
+   * `readAt` is per message rather than per thread so an unread count is a
+   * filter on this index and never needs a second bookkeeping row that could
+   * drift out of step with the messages themselves.
+   */
+  directMessages: defineTable({
+    conversationId: v.id("conversations"),
+    senderEmail: v.string(),
+    body: v.string(),
+    createdAt: v.number(),
+    readAt: v.optional(v.number()),
+  }).index("by_conversation", ["conversationId", "createdAt"]),
+
+  /* ================================================================== */
+  /* The student roster — the association's Excel import                 */
+  /* ================================================================== */
+
+  /**
+   * One row of the association's standard student database spreadsheet.
+   *
+   * The column list is taken verbatim from the two files the association
+   * supplied ("AIDS - Database 2022-2026 Batch Format.xlsx" and "CSE - Student
+   * Database (2022-26 Batch).xlsx"). Both carry the identical 16-column header,
+   * so that header is the format, and `roster.ts` validates against it rather
+   * than guessing from whatever a given sheet happens to contain.
+   *
+   * WHY THIS IS NOT THE `alumni` TABLE. Two different things: `alumni` is a
+   * profile a member wrote about themselves and controls the privacy of;
+   * this is the college's record of who studied here, entered by the
+   * association. Keeping them apart is what makes verification meaningful —
+   * `access.reviewVerification` can check a claimed enrollment number against
+   * this roster instead of against a self-declared field. Merging them would
+   * mean a member could edit the very record used to verify them.
+   *
+   * PRIVACY. Every row holds a personal email, a phone number and a home
+   * address for someone who has not consented to anything. `roster.ts` returns
+   * the full row to admins only; the member-facing search returns a projection
+   * carrying name, department and batch and nothing else.
+   */
+  studentRecords: defineTable({
+    /** Column 1. Sheet ordering only — not an identifier. */
+    slNo: v.optional(v.number()),
+    firstName: v.string(),
+    middleName: v.string(),
+    lastName: v.string(),
+    /** Column 5. The mandatory personal address, and the identity key. */
+    personalEmail: v.string(),
+    secondaryEmail: v.string(),
+    phone: v.string(),
+    secondaryPhone: v.string(),
+    /** Column 9. The roll number — 12 digits in both supplied files. */
+    enrollmentNumber: v.string(),
+    degree: v.string(),
+    /** Column 11 exactly as the sheet spelled it: "AI&DS", "Computer Science…". */
+    departmentRaw: v.string(),
+    /** The same department mapped onto the portal's codes: AIDS, CSE, … */
+    department: v.string(),
+    permanentAddress: v.string(),
+    designation: v.string(),
+    company: v.string(),
+    yearOfPassing: v.number(),
+    yearOfJoining: v.number(),
+
+    /** Derived, not imported — see COLLEGE_EMAIL_DOMAIN in roster.ts. */
+    collegeEmail: v.string(),
+    /** First + middle + last, collapsed, for display and for search. */
+    fullName: v.string(),
+    /**
+     * Name, enrollment number and both addresses in one field.
+     *
+     * One search index over this is what lets a single search box match a name,
+     * a roll number or a college address — which is what the association asked
+     * for. Convex tokenises it, so "953622104001" is a token that matches
+     * exactly and also as a prefix.
+     */
+    searchText: v.string(),
+
+    importedAt: v.number(),
+    importedByEmail: v.string(),
+    /** Groups every row that arrived from one upload, so it can be undone. */
+    importBatchId: v.string(),
+  })
+    .index("by_enrollment", ["enrollmentNumber"])
+    .index("by_personal_email", ["personalEmail"])
+    .index("by_college_email", ["collegeEmail"])
+    .index("by_department_passing", ["department", "yearOfPassing"])
+    .index("by_import", ["importBatchId"])
+    .searchIndex("search_students", {
+      searchField: "searchText",
+      filterFields: ["department", "yearOfPassing", "degree"],
+    }),
+
+  /** One upload. Kept so an import can be reported on, and reversed. */
+  importBatches: defineTable({
+    batchId: v.string(),
+    fileName: v.string(),
+    sheetName: v.string(),
+    uploadedByEmail: v.string(),
+    createdAt: v.number(),
+    rowsSeen: v.number(),
+    imported: v.number(),
+    updated: v.number(),
+    rejected: v.number(),
+    /** True when the admin only asked for a validation report. */
+    dryRun: v.boolean(),
+  }).index("by_created", ["createdAt"]),
+
+  /* ================================================================== */
+  /* Communities                                                         */
+  /* ================================================================== */
+
+  /**
+   * A community — a space with its own membership and its own feed.
+   *
+   * `visibility` is the whole distinction the association asked for: an `open`
+   * community is joined instantly, an `approval` one holds the request until
+   * whoever created the community accepts it. Nothing else differs between them,
+   * which is why it is one field and not two kinds of table.
+   */
+  communities: defineTable({
+    name: v.string(),
+    slug: v.string(),
+    tagline: v.string(),
+    description: v.string(),
+    visibility: v.union(v.literal("open"), v.literal("approval")),
+    createdByEmail: v.string(),
+    coverUrl: v.optional(v.string()),
+    /** Optional narrowing, for a batch- or department-specific community. */
+    scopeBatch: v.optional(v.number()),
+    scopeDepartment: v.optional(v.string()),
+    /** Denormalised so a directory of communities needs no per-row counting. */
+    memberCount: v.number(),
+    postCount: v.number(),
+    archived: v.boolean(),
+    createdAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_created", ["createdAt"])
+    .index("by_creator", ["createdByEmail"]),
+
+  /**
+   * Membership, including the pending state.
+   *
+   * `role` and `status` are separate on purpose: a member can be an admin of a
+   * community and still be removed from it, and collapsing the two would make
+   * "pending admin" representable when it is not a real state.
+   */
+  communityMembers: defineTable({
+    communityId: v.id("communities"),
+    email: v.string(),
+    role: v.union(v.literal("admin"), v.literal("moderator"), v.literal("member")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("declined"),
+      v.literal("removed"),
+    ),
+    /** What the requester said when asking to join, if anything. */
+    note: v.optional(v.string()),
+    createdAt: v.number(),
+    decidedAt: v.optional(v.number()),
+    decidedByEmail: v.optional(v.string()),
+  })
+    .index("by_community_status", ["communityId", "status"])
+    .index("by_community_email", ["communityId", "email"])
+    .index("by_email_status", ["email", "status"]),
+
+  /* ================================================================== */
+  /* Questions — join screening, verification, and polls                 */
+  /* ================================================================== */
+
+  /**
+   * One question, in one of three places.
+   *
+   * The association asked for admin-authored questions in three settings:
+   * screening someone who wants to join a community, the alumni verification
+   * form, and a poll attached to a feed post. They are one table because they
+   * are the same shape — a prompt, an answer kind, and whether an answer is
+   * required — and because a member answering any of them produces the same
+   * `questionAnswers` row. Three tables would mean three near-identical
+   * validators and three chances for them to disagree.
+   *
+   * `scope` decides which of `communityId` / `postId` is set:
+   *   verification  — neither. The questions apply to every join request.
+   *   communityJoin — `communityId`.
+   *   poll          — `postId`.
+   */
+  questions: defineTable({
+    scope: v.union(
+      v.literal("verification"),
+      v.literal("communityJoin"),
+      v.literal("poll"),
+    ),
+    communityId: v.optional(v.id("communities")),
+    postId: v.optional(v.id("posts")),
+    prompt: v.string(),
+    kind: v.union(
+      v.literal("text"),
+      v.literal("longText"),
+      v.literal("choice"),
+    ),
+    /** Non-empty for `choice`, and for every poll. */
+    options: v.array(v.string()),
+    required: v.boolean(),
+    order: v.number(),
+    active: v.boolean(),
+    createdByEmail: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_scope", ["scope", "active", "order"])
+    .index("by_community", ["communityId", "order"])
+    .index("by_post", ["postId", "order"]),
+
+  /**
+   * One answer to one question, by one member.
+   *
+   * A poll vote is an answer whose `answer` is the chosen option — same table,
+   * because a vote is exactly "this person answered this question with this
+   * option", and giving votes their own table would duplicate the one-per-person
+   * rule that `by_question_email` already enforces here.
+   */
+  questionAnswers: defineTable({
+    questionId: v.id("questions"),
+    email: v.string(),
+    scope: v.union(
+      v.literal("verification"),
+      v.literal("communityJoin"),
+      v.literal("poll"),
+    ),
+    communityId: v.optional(v.id("communities")),
+    postId: v.optional(v.id("posts")),
+    answer: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_question", ["questionId"])
+    .index("by_question_email", ["questionId", "email"])
+    .index("by_email_scope", ["email", "scope"])
+    .index("by_community_email", ["communityId", "email"]),
+
+  /* ================================================================== */
+  /* Posts — the general feed and each community's feed                  */
+  /* ================================================================== */
+
+  /**
+   * A post.
+   *
+   * `communityId` absent means the general feed, which every signed-in member
+   * can read — the association asked for one place where a post reaches every
+   * batch and year. Present means the post belongs to that community and is
+   * readable by its active members only. One table with a nullable scope, rather
+   * than two, so the composer, the moderation path and the like/comment tables
+   * do not each need a general and a community variant.
+   */
+  posts: defineTable({
+    authorEmail: v.string(),
+    communityId: v.optional(v.id("communities")),
+    body: v.string(),
+    kind: v.union(v.literal("text"), v.literal("poll")),
+    imageUrls: v.array(v.string()),
+    /** Denormalised, so a feed of 50 posts is not 100 extra reads. */
+    likeCount: v.number(),
+    commentCount: v.number(),
+    /** Moderation: hidden posts stay readable to their author and to admins. */
+    hidden: v.boolean(),
+    hiddenReason: v.optional(v.string()),
+    createdAt: v.number(),
+    editedAt: v.optional(v.number()),
+  })
+    .index("by_created", ["createdAt"])
+    .index("by_community", ["communityId", "createdAt"])
+    .index("by_author", ["authorEmail", "createdAt"]),
+
+  postLikes: defineTable({
+    postId: v.id("posts"),
+    email: v.string(),
+    createdAt: v.number(),
+  })
+    .index("by_post", ["postId"])
+    .index("by_post_email", ["postId", "email"]),
+
+  postComments: defineTable({
+    postId: v.id("posts"),
+    authorEmail: v.string(),
+    body: v.string(),
+    hidden: v.boolean(),
+    createdAt: v.number(),
+  }).index("by_post", ["postId", "createdAt"]),
 
   /** Module 2 + 3 — alumni profiles and the searchable directory. */
   alumni: defineTable({

@@ -10,6 +10,12 @@ import { initials } from "@/lib/site";
  * Every page composes from these so the brass rules, eyebrow labels, monogram
  * avatars and type scale stay identical across all twelve modules. None of these
  * are client components — pages opt into interactivity themselves.
+ *
+ * The network additions live at the bottom: `Avatar`, `DegreeMark` and
+ * `MutualNote`. They are here rather than in the network pages because the
+ * directory, the profile page and the message inbox all render the same
+ * relationship, and it has to look the same in all three or it stops reading as
+ * one fact about one person.
  */
 
 function cx(...parts: Array<string | false | null | undefined>) {
@@ -43,7 +49,12 @@ export function Shell({
   );
 }
 
-/** Small mono label. Used for module names, counts and metadata. */
+/**
+ * Small label. Used for module names, counts and metadata.
+ *
+ * `brass-ink` rather than `brass`: the decorative brass is about 3:1 on white,
+ * which fails AA at this size. See the palette note in index.css.
+ */
 export function Eyebrow({
   children,
   tone = "brass",
@@ -52,14 +63,14 @@ export function Eyebrow({
   tone?: "brass" | "bone" | "slate";
 }) {
   const tones = {
-    brass: "text-brass",
+    brass: "text-brass-ink",
     bone: "text-brass-soft",
     slate: "text-slate-ink",
   };
   return (
     <span
       className={cx(
-        "font-mono text-[0.7rem] uppercase tracking-[0.18em]",
+        "font-mono text-[0.7rem] uppercase tracking-[0.16em]",
         tones[tone],
       )}
     >
@@ -196,6 +207,7 @@ export function Card({
   accent = false,
   image,
   imageAlt = "",
+  interactive = false,
 }: {
   children: ReactNode;
   className?: string;
@@ -205,14 +217,18 @@ export function Card({
   /** Photograph from /public, rendered above the content in a fixed frame. */
   image?: string;
   imageAlt?: string;
+  /** Lifts on hover. Only for cards that are themselves a link or an action. */
+  interactive?: boolean;
 }) {
   return (
     <As
       className={cx(
-        "border border-line bg-white transition-colors hover:border-brass/60",
+        "rounded-card border border-line bg-surface shadow-card",
+        interactive ? "card-interactive" : "transition-colors",
         // Padding sits on the inner wrapper when there is an image, so the
         // photograph can run edge to edge instead of floating inside a margin.
         !image && "p-6",
+        image && "overflow-hidden",
         className,
       )}
     >
@@ -236,7 +252,12 @@ export function Card({
   );
 }
 
-/** Monogram avatar — avoids depending on external image hosts entirely. */
+/**
+ * Monogram avatar — avoids depending on external image hosts entirely.
+ *
+ * Circular, because these stand for people. Everything else in the portal is
+ * square, which is what makes a person read as a person at a glance.
+ */
 export function Monogram({
   name,
   size = "md",
@@ -260,13 +281,49 @@ export function Monogram({
     <span
       aria-hidden
       className={cx(
-        "font-mono inline-flex shrink-0 items-center justify-center tracking-tight",
+        "font-mono inline-flex shrink-0 items-center justify-center rounded-chip tracking-tight",
         sizes[size],
         tones[tone],
       )}
     >
       {initials(name)}
     </span>
+  );
+}
+
+/**
+ * A member's face: their photograph when there is one, their monogram when not.
+ *
+ * Sign-in is Google and LinkedIn only, so most members arrive with a provider
+ * avatar. This falls back to the monogram on a missing *or broken* URL — a
+ * provider image can 404 later, and a broken-image icon where a face should be
+ * is worse than initials.
+ */
+export function Avatar({
+  name,
+  src,
+  size = "md",
+  tone = "maroon",
+}: {
+  name: string;
+  src?: string | null;
+  size?: "sm" | "md" | "lg";
+  tone?: "maroon" | "ink" | "brass";
+}) {
+  const sizes = { sm: "size-9", md: "size-12", lg: "size-16" };
+  if (!src) return <Monogram name={name} size={size} tone={tone} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={src}
+      alt=""
+      aria-hidden
+      loading="lazy"
+      className={cx(
+        "shrink-0 rounded-chip border border-line object-cover",
+        sizes[size],
+      )}
+    />
   );
 }
 
@@ -279,15 +336,15 @@ export function Pill({
 }) {
   const tones = {
     quiet: "border-line bg-bone text-slate-ink",
-    brass: "border-brass/40 bg-brass/10 text-brass",
-    jade: "border-jade/30 bg-jade/10 text-jade",
-    maroon: "border-maroon/30 bg-maroon/8 text-maroon",
+    brass: "border-brass/45 bg-brass/10 text-brass-ink",
+    jade: "border-jade/30 bg-jade-tint text-jade",
+    maroon: "border-maroon/30 bg-maroon-tint text-maroon",
     dark: "border-white/20 bg-white/10 text-bone",
   };
   return (
     <span
       className={cx(
-        "font-mono inline-flex items-center gap-1 border px-2 py-0.5 text-[0.7rem] uppercase tracking-[0.1em]",
+        "font-mono inline-flex items-center gap-1 rounded-chip border px-2.5 py-0.5 text-[0.7rem] uppercase tracking-[0.1em]",
         tones[tone],
       )}
     >
@@ -347,42 +404,65 @@ export function Button({
   href,
   children,
   variant = "solid",
+  size = "md",
   type,
   onClick,
   disabled,
   className,
+  title,
 }: {
   href?: Href;
   children: ReactNode;
-  variant?: "solid" | "outline" | "ghost" | "onDark";
+  variant?: "solid" | "outline" | "ghost" | "onDark" | "quiet";
+  size?: "sm" | "md";
   type?: "button" | "submit";
   onClick?: () => void;
   disabled?: boolean;
   className?: string;
+  title?: string;
 }) {
   const variants = {
-    solid: "bg-maroon text-bone hover:bg-maroon-deep",
-    outline: "border border-ink/25 text-ink hover:border-maroon hover:text-maroon",
-    ghost: "text-maroon hover:text-maroon-deep underline decoration-brass/50 underline-offset-4",
+    solid: "bg-maroon text-bone hover:bg-maroon-deep shadow-panel",
+    outline:
+      "border border-ink/20 bg-surface text-ink hover:border-maroon hover:text-maroon",
+    ghost:
+      "text-maroon hover:text-maroon-deep underline decoration-brass/50 underline-offset-4",
     onDark: "bg-bone text-ink hover:bg-brass-soft",
+    /** For secondary actions sitting next to a solid one. */
+    quiet: "bg-bone-deep text-ink hover:bg-line",
   };
-  const base = cx(
+  const sizes = {
     // min-h-11 (44px) is the accessible touch-target floor. Without it the
     // padding alone gave ~39px, and this is the CTA used across every page.
-    "font-mono inline-flex min-h-11 items-center justify-center gap-2 px-5 py-2.5 text-[0.75rem] uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+    md: "min-h-11 px-5 py-2.5 text-[0.75rem]",
+    sm: "min-h-9 px-3.5 py-1.5 text-[0.7rem]",
+  };
+  const base = cx(
+    "font-mono inline-flex items-center justify-center gap-2 rounded-control uppercase tracking-[0.12em] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+    sizes[size],
     variants[variant],
     className,
   );
 
   if (href) {
     return (
-      <Link href={href as ComponentProps<typeof Link>["href"]} className={base}>
+      <Link
+        href={href as ComponentProps<typeof Link>["href"]}
+        className={base}
+        title={title}
+      >
         {children}
       </Link>
     );
   }
   return (
-    <button type={type ?? "button"} onClick={onClick} disabled={disabled} className={base}>
+    <button
+      type={type ?? "button"}
+      onClick={onClick}
+      disabled={disabled}
+      className={base}
+      title={title}
+    >
       {children}
     </button>
   );
@@ -403,7 +483,7 @@ export function Meter({
   return (
     <div>
       <div
-        className="h-1.5 w-full bg-bone-deep"
+        className="h-1.5 w-full overflow-hidden rounded-chip bg-bone-deep"
         role="progressbar"
         aria-valuenow={pct}
         aria-valuemin={0}
@@ -433,7 +513,7 @@ export function Empty({
   action?: ReactNode;
 }) {
   return (
-    <div className="border border-dashed border-line bg-white/60 px-6 py-14 text-center">
+    <div className="rounded-card border border-dashed border-line-strong bg-surface/60 px-6 py-14 text-center">
       <p className="font-display text-xl text-ink">{title}</p>
       {hint ? (
         <p className="mx-auto mt-2 max-w-md text-sm text-slate-ink">{hint}</p>
@@ -448,8 +528,190 @@ export function LoadingRows({ rows = 6 }: { rows?: number }) {
   return (
     <div className="space-y-3" aria-busy>
       {Array.from({ length: rows }, (_, i) => (
-        <div key={i} className="h-20 animate-pulse border border-line bg-white/70" />
+        <div
+          key={i}
+          className="h-20 animate-pulse rounded-card border border-line bg-surface/70"
+        />
       ))}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Form field styling                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Shared field classes, so every form in the portal looks like the same form.
+ *
+ * These used to live in `auth-panels.tsx`, which existed to hold the password and
+ * one-time-code panels. Sign-in is two provider buttons now, so that file is gone
+ * and these moved here — the verification form on /join, the job posting desk and
+ * the RACE submission form all still need them, and none of them were ever about
+ * authentication.
+ */
+export const inputClass =
+  "w-full rounded-control border border-line bg-surface px-3.5 py-2.5 text-[0.9rem] text-ink transition-colors placeholder:text-slate-soft focus:border-maroon disabled:cursor-not-allowed disabled:bg-bone disabled:text-slate-ink";
+export const labelClass =
+  "font-mono block text-[0.7rem] uppercase tracking-[0.12em] text-slate-ink";
+export const errorClass =
+  "font-mono text-[0.7rem] leading-snug tracking-[0.04em] text-maroon";
+export const hintClass = "text-[0.8rem] leading-snug text-slate-ink";
+
+/**
+ * Convex wraps an Error thrown inside a function with a request id and a stack
+ * before it reaches the browser. The sentence the handler wrote is the one the
+ * member needs to read, so lift that out and show it exactly as written.
+ */
+export function actionErrorMessage(error: unknown) {
+  const raw = (error instanceof Error ? error.message : String(error)).trim();
+  const named = /Uncaught (?:ConvexError|Error):\s*([^\n]+)/.exec(raw);
+  if (named?.[1]) return named[1].trim();
+  const line = raw
+    .split("\n")
+    .map((part) => part.trim())
+    .find(
+      (part) =>
+        part.length > 0 &&
+        !part.startsWith("[") &&
+        !/^at\s/.test(part) &&
+        part !== "Server Error",
+    );
+  return line ?? "That did not go through. Try again in a moment.";
+}
+
+/* ------------------------------------------------------------------ */
+/* Network primitives                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How close this member is to you.
+ *
+ * Three states and no fourth: connected, a mutual connection exists, or nothing
+ * measured. There is deliberately no "3rd" — `network.profileEdge` does not walk
+ * that far, and printing a degree it never measured would be a guess dressed as
+ * a fact.
+ */
+export function DegreeMark({ degree }: { degree: 1 | 2 | null }) {
+  if (degree === null) return null;
+  return (
+    <span
+      title={
+        degree === 1
+          ? "Connected to you"
+          : "Someone you are connected to knows this member"
+      }
+      className={cx(
+        "font-mono rounded-chip border px-2 py-0.5 text-[0.65rem] uppercase tracking-[0.1em]",
+        degree === 1
+          ? "border-jade/30 bg-jade-tint text-jade"
+          : "border-line-strong bg-bone text-slate-ink",
+      )}
+    >
+      {degree === 1 ? "1st" : "2nd"}
+    </span>
+  );
+}
+
+/**
+ * THE SIGNATURE ELEMENT — who you both know, by name.
+ *
+ * Names one or two mutual connections and counts the rest, rather than showing a
+ * bare number. The name is the useful part: it tells the member who to ask for
+ * the introduction, which is the whole reason to surface a mutual at all.
+ *
+ * `complete` comes from the backend's bounded mutual walk. When the walk was
+ * truncated this says "at least", because under-reporting silently would make a
+ * well-connected member look isolated.
+ */
+export function MutualNote({
+  names,
+  complete = true,
+  onDark = false,
+}: {
+  names: string[];
+  complete?: boolean;
+  onDark?: boolean;
+}) {
+  if (names.length === 0) return null;
+
+  const [first, second] = names;
+  const rest = names.length - (second ? 2 : 1);
+  const who = second ? `${first} and ${second}` : first;
+  const tail =
+    rest > 0 ? ` and ${rest} other${rest === 1 ? "" : "s"}` : "";
+
+  return (
+    <p
+      className={cx(
+        "mutual-marker text-[0.8rem] leading-snug",
+        onDark ? "text-bone/70" : "text-slate-ink",
+      )}
+    >
+      {complete ? "" : "At least "}
+      <span className={onDark ? "text-bone" : "text-ink"}>
+        {who}
+        {tail}
+      </span>{" "}
+      {names.length === 1 && !tail ? "knows" : "know"} you both
+    </p>
+  );
+}
+
+/**
+ * Filter tabs with a count on each, used by /network and /messages.
+ *
+ * The count is part of the label rather than a separate badge because it is the
+ * thing being chosen between: "Requests 3" is one piece of information, and
+ * splitting it into two elements makes the reader assemble it themselves.
+ */
+export function TabBar<T extends string>({
+  tabs,
+  active,
+  onSelect,
+  label,
+}: {
+  tabs: Array<{ id: T; label: string; count?: number }>;
+  active: T;
+  onSelect: (id: T) => void;
+  label: string;
+}) {
+  return (
+    <div
+      role="tablist"
+      aria-label={label}
+      className="flex flex-wrap gap-1 rounded-control border border-line bg-surface p-1 shadow-panel"
+    >
+      {tabs.map((tab) => {
+        const selected = tab.id === active;
+        return (
+          <button
+            key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            onClick={() => onSelect(tab.id)}
+            className={cx(
+              "font-mono inline-flex min-h-9 items-center gap-2 rounded-[6px] px-3.5 text-[0.7rem] uppercase tracking-[0.1em] transition-colors",
+              selected
+                ? "bg-ink text-bone"
+                : "text-slate-ink hover:bg-bone hover:text-ink",
+            )}
+          >
+            {tab.label}
+            {tab.count !== undefined ? (
+              <span
+                className={cx(
+                  "tabular-nums",
+                  selected ? "text-brass-soft" : "text-slate-soft",
+                )}
+              >
+                {tab.count}
+              </span>
+            ) : null}
+          </button>
+        );
+      })}
     </div>
   );
 }
