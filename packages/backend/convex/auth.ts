@@ -215,6 +215,46 @@ function createAuth(ctx: GenericCtx<DataModel>) {
         enabled: true,
         trustedProviders: ["google", "linkedin"],
         allowDifferentEmails: true,
+        /*
+         * WHY THIS IS OFF, and why that is safe HERE specifically.
+         *
+         * Signing in with Google to an address that already had a LinkedIn
+         * account failed with `account_not_linked`. The gate is one clause in
+         * better-auth's implicit-link check:
+         *
+         *   requireLocalEmailVerified && !dbUser.user.emailVerified
+         *
+         * It defaults to true and refuses the link when the EXISTING local row
+         * is not marked email-verified. LinkedIn's OIDC response does not
+         * reliably carry an `email_verified` claim, so a row created by
+         * LinkedIn is stored unverified — and Google could then never attach to
+         * it. The member is left unable to sign in with a provider that
+         * confirmed their address perfectly well.
+         *
+         * The attack the default defends against is pre-registration: someone
+         * creates an UNVERIFIED account at a victim's address, waits, and has
+         * the victim's real OAuth identity linked into the attacker's row.
+         * That requires a signup path which mints a user row without proving
+         * control of the address. THIS DEPLOYMENT HAS NONE — passwords are not
+         * registered (the API answers EMAIL_PASSWORD_SIGN_UP_DISABLED), and
+         * forget-password and the email-OTP routes do not exist. The only way a
+         * row comes into being is a completed Google or LinkedIn round trip,
+         * and both verify the address before releasing it. So every row is
+         * provider-confirmed even where the stored flag says otherwise: the
+         * flag is a claim-parsing artefact, not evidence.
+         *
+         * The other clause still stands guard — an UNTRUSTED provider arriving
+         * with an unverified claim is refused regardless of this setting.
+         *
+         * SELF-HEALING, and a note for the upgrade. On a successful link where
+         * the provider does assert the address, better-auth writes
+         * `emailVerified: true` back to the local row, so each affected member
+         * is fixed permanently the first time they use Google. This option is
+         * marked deprecated upstream and the gate becomes unconditional in a
+         * later minor; by then most rows will have been repaired, but a
+         * LinkedIn-only member may still need `emailVerified` set by hand.
+         */
+        requireLocalEmailVerified: false,
       },
     },
     plugins: [
