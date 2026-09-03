@@ -171,6 +171,59 @@ export const reviewVerification = internalMutation({
 // ---------------------------------------------------------------------------
 
 /**
+ * The one normal form for an address a role is granted to.
+ *
+ * WHY THIS EXISTS. `setRole` is run by hand from a terminal, and it used to
+ * accept whatever was typed after a trim and a lowercase. A mistyped address
+ * therefore created a SECOND role row that no sign-in could ever match — a
+ * phantom admin that reads as granted and can never be used. That happened
+ * with `alumni@ritrjpm.ac.in.`, one trailing dot.
+ *
+ * The dot is stripped rather than refused: a trailing dot is a legal
+ * fully-qualified domain, no OAuth provider ever returns one, and the address
+ * the operator meant is unambiguous. Anything that is still not an address is
+ * refused loudly, because the alternative is a grant that silently does
+ * nothing.
+ */
+function roleEmail(raw: string): string {
+  const email = raw.trim().toLowerCase().replace(/\.+$/, "");
+  if (!EMAIL_RE.test(email)) {
+    throw new Error(
+      `"${raw}" is not an email address, so a role granted to it could never be used. Check the spelling.`,
+    );
+  }
+  return email;
+}
+
+/**
+ * Revokes a role, by removing the row entirely.
+ *
+ * `setRole` to "guest" is not the same thing: it leaves an explicit grant of
+ * the least-privileged role, which `resolveRole` already returns by default —
+ * so the row says something is decided when nothing is. This deletes it, and
+ * the address falls back to whatever its verification and ventures imply.
+ *
+ *   npx convex run access:clearRole {"email":"someone@example.com"}
+ *
+ * Also the way to clean up a mistyped grant, which is what it was added for.
+ */
+export const clearRole = internalMutation({
+  args: { email: v.string() },
+  handler: async (ctx, args) => {
+    // Not `roleEmail`: a row created before that validation existed may hold a
+    // malformed address, and refusing to delete it would be a trap.
+    const email = args.email.trim().toLowerCase();
+    const row = await ctx.db
+      .query("memberRoles")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    if (!row) return { deleted: false, email };
+    await ctx.db.delete(row._id);
+    return { deleted: true, email };
+  },
+});
+
+/**
  * Resolves the effective role for an email.
  *
  * Anyone unknown is a Guest — the brief's four roles are Alumni, Entrepreneurs,
@@ -231,7 +284,7 @@ export const setRole = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    const email = args.email.trim().toLowerCase();
+    const email = roleEmail(args.email);
     const existing = await ctx.db
       .query("memberRoles")
       .withIndex("by_email", (q) => q.eq("email", email))
