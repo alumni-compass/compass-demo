@@ -75,7 +75,14 @@ Convex, not on Vercel, and are not copied over from dev:
 
 ```bash
 npx convex env set BETTER_AUTH_SECRET  <a fresh 32+ char random string>
-npx convex env set SITE_URL            https://<your-vercel-domain>
+npx convex env set SITE_URL            https://<your-domain>
+
+# Every OTHER origin the site is served from, comma separated. Optional, but
+# omitting one is how you get "Invalid origin" the moment somebody clicks a
+# provider button: Better Auth refuses any request whose Origin header is not
+# trusted, and SITE_URL only covers one. localhost and 127.0.0.1 on the same
+# port are paired automatically; a deployed domain is not guessed.
+npx convex env set TRUSTED_ORIGINS     "https://<your-domain>,http://localhost:3001"
 
 # REQUIRED — at least one of these two pairs. See the warning below.
 npx convex env set GOOGLE_CLIENT_ID        xxx    # Google sign-in
@@ -109,6 +116,13 @@ npx convex env set EVENT_FROM_EMAIL "RITAA <alumni@ritrjpm.ac.in>"
 `baseURL` and trusted origin (`packages/backend/convex/auth.ts`). Left as
 `http://localhost:3001`, sign-in fails in production and cookies are issued
 against a plaintext origin.
+
+### The two errors these produce, in the order you meet them
+
+`INVALID_ORIGIN` on click means the browser's address is not `SITE_URL` and not
+in `TRUSTED_ORIGINS`. `redirect_uri does not match the registered value` on the
+provider's own page means the opposite half: the request got through, and the
+URL below is not registered on the provider. Both are configuration, never code.
 
 OAuth redirect URLs to register with each provider:
 

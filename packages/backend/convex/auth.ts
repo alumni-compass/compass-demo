@@ -14,6 +14,66 @@ const nativeAppUrl = process.env.NATIVE_APP_URL || "RIT-ALUMINI://";
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
 /**
+ * Every origin a browser may call this auth server from.
+ *
+ * WHY THIS IS A FUNCTION AND NOT `[siteUrl]`. Better Auth refuses any request
+ * whose `Origin` header is not on this list, with a bare `INVALID_ORIGIN` — and
+ * one deployment is legitimately served from several origins. A single
+ * `SITE_URL` covers exactly one of them, so every other one failed at the
+ * moment a member clicked the button, which is the worst possible time to find
+ * out and the least informative place to be told.
+ *
+ * The check only runs when the request carries a cookie, which is why this was
+ * invisible to a curl test and immediate in a real browser.
+ *
+ * THE TRAP WORTH NAMING: `http://localhost:3001` and `http://127.0.0.1:3001`
+ * are the same server and two different origins. Typing the other one produced
+ * a refusal that looked like broken sign-in, so they are now paired
+ * automatically whenever SITE_URL is local — nobody should need to know that to
+ * reach a dev server.
+ *
+ * A DEPLOYED DOMAIN STILL HAS TO BE DECLARED, deliberately:
+ *
+ *   npx convex env set SITE_URL         https://alumini.ritrjpm.edu.in
+ *   npx convex env set TRUSTED_ORIGINS  "https://alumini.ritrjpm.edu.in,http://localhost:3001"
+ *
+ * TRUSTED_ORIGINS is comma separated and takes the wildcards Better Auth
+ * supports, so `https://*-ritaa.vercel.app` covers preview builds. Note what is
+ * deliberately absent: a blanket `https://*.vercel.app`. That would let any
+ * page on anybody's Vercel project make credentialed calls to this deployment,
+ * which is an account-takeover surface traded for one saved env var.
+ */
+function trustedOrigins(): string[] {
+  const origins = new Set<string>();
+
+  const add = (value: string | undefined) => {
+    const trimmed = value?.trim().replace(/\/+$/, "");
+    if (trimmed) origins.add(trimmed);
+  };
+
+  add(siteUrl);
+  add(nativeAppUrl);
+  // Expo development clients.
+  origins.add("exp://");
+
+  for (const value of (process.env.TRUSTED_ORIGINS ?? "").split(",")) add(value);
+
+  try {
+    const url = new URL(siteUrl);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") {
+      const port = url.port ? `:${url.port}` : "";
+      add(`http://localhost${port}`);
+      add(`http://127.0.0.1${port}`);
+    }
+  } catch {
+    // A malformed SITE_URL is reported by `configuredAuthMethods` rather than
+    // thrown here, where it would take every auth route down at once.
+  }
+
+  return [...origins];
+}
+
+/**
  * Module 1 — social logins, and the ONLY way into the portal.
  *
  * Google and LinkedIn are the two sign-in methods. Email-and-password and
@@ -79,14 +139,30 @@ export const configuredAuthMethods = query({
     const linkedin = Boolean(
       process.env.LINKEDIN_CLIENT_ID && process.env.LINKEDIN_CLIENT_SECRET,
     );
-    return { google, linkedin, anyConfigured: google || linkedin };
+    return {
+      google,
+      linkedin,
+      anyConfigured: google || linkedin,
+      /*
+       * The origin rules, returned so the sign-in screen can check itself.
+       *
+       * Neither value is a secret: an origin is a public address, and the list
+       * is enforced on this side whatever a client believes about it. What they
+       * buy is a screen that can say "this deployment does not trust the
+       * address you are on, and here is the command" — instead of a member
+       * pressing a button and getting INVALID_ORIGIN out of a fetch they cannot
+       * see, which is exactly how this went wrong once already.
+       */
+      siteUrl,
+      trustedOrigins: trustedOrigins(),
+    };
   },
 });
 
 function createAuth(ctx: GenericCtx<DataModel>) {
   return betterAuth({
     baseURL: siteUrl,
-    trustedOrigins: [siteUrl, nativeAppUrl, "exp://"],
+    trustedOrigins: trustedOrigins(),
     database: authComponent.adapter(ctx),
     // No emailAndPassword block: passwords are off. Leaving it enabled while the
     // UI offered only social buttons would keep a second, unadvertised way in
