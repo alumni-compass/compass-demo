@@ -179,6 +179,36 @@ function MemberDashboard() {
         </Button>
       </div>
 
+      {role?.role === "admin" ? (
+        <div className="mt-10">
+          <Card>
+            <div className="flex flex-wrap items-center gap-3">
+              <Eyebrow>Admin</Eyebrow>
+              <Pill tone="maroon">You administer this portal</Pill>
+            </div>
+            <h3 className="font-display mt-2 text-xl text-ink">
+              The console is where verification and moderation live.
+            </h3>
+            <p className="mt-2 max-w-2xl text-[0.9rem] leading-relaxed text-slate-ink">
+              Verify members against college records, hide a post from the
+              association-wide feed, edit the questions every member is asked,
+              import the college roster, and grant roles. Nothing here is
+              reachable without your role — the queries return empty for
+              everybody else.
+            </p>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <Button href="/admin">Open the admin console</Button>
+              <Button href="/admin#verify" variant="outline">
+                Verify members
+              </Button>
+              <Button href="/admin#moderate" variant="outline">
+                Moderate the feed
+              </Button>
+            </div>
+          </Card>
+        </div>
+      ) : null}
+
       <DetailsNudge />
 
       {/* Verification is the gate on directory access, so surface it plainly.

@@ -1,6 +1,12 @@
 import { v } from "convex/values";
 
-import { internalMutation, mutation, query } from "./_generated/server";
+import {
+  internalMutation,
+  internalQuery,
+  mutation,
+  type MutationCtx,
+  query,
+} from "./_generated/server";
 import { requireRole } from "./authz";
 
 /**
@@ -172,6 +178,65 @@ export const reviewVerification = internalMutation({
 // ---------------------------------------------------------------------------
 
 /**
+ * Everybody the portal knows about, for the terminal.
+ *
+ * WHY THIS IS A CLI FUNCTION AND NOT A PAGE. There is a chicken-and-egg the
+ * console cannot solve: the admin panels are invisible to anyone without the
+ * admin role, and the role is keyed on an email address. Somebody granted admin
+ * on one address and signed in with another sees a guest's portal and has no
+ * way to discover why. Answering that needs a view from outside the session,
+ * which is exactly what the deploy key gives:
+ *
+ *   cd packages/backend
+ *   npx convex run access:listMembers
+ *
+ * It lists every profile with its role and verification, plus every role row
+ * that has no profile behind it yet — which is the case that matters, because a
+ * role granted before somebody first signs in looks like nothing at all.
+ */
+export const listMembers = internalQuery({
+  args: {},
+  handler: async (ctx) => {
+    const profiles = await ctx.db.query("alumni").collect();
+    const roles = await ctx.db.query("memberRoles").collect();
+    const roleByEmail = new Map(
+      roles.map((row) => [row.email.trim().toLowerCase(), row.role]),
+    );
+
+    const members = profiles
+      .map((row) => {
+        const email = row.email.trim().toLowerCase();
+        return {
+          name: row.name,
+          email,
+          role: roleByEmail.get(email) ?? "guest (no explicit grant)",
+          verified: row.verified,
+          batch: row.batch,
+          department: row.department,
+        };
+      })
+      .sort((a, b) => a.email.localeCompare(b.email));
+
+    const withProfiles = new Set(members.map((row) => row.email));
+    const grantsWithoutProfile = roles
+      .map((row) => row.email.trim().toLowerCase())
+      .filter((email) => !withProfiles.has(email))
+      .sort()
+      .map((email) => ({ email, role: roleByEmail.get(email) ?? "guest" }));
+
+    return {
+      members,
+      grantsWithoutProfile,
+      counts: {
+        profiles: members.length,
+        verified: members.filter((row) => row.verified).length,
+        admins: roles.filter((row) => row.role === "admin").length,
+      },
+    };
+  },
+});
+
+/**
  * Marks a member verified, or takes it back. The admin's own button.
  *
  * WHY THIS EXISTS BESIDE `reviewVerification`. That one answers a REQUEST: it
@@ -194,60 +259,87 @@ export const reviewVerification = internalMutation({
  * both on one click would quietly evict a member to correct a badge, so the
  * flag moves and the role stays. Use `setRole` when the role is the thing.
  */
+async function applyVerified(
+  ctx: MutationCtx,
+  rawEmail: string,
+  verified: boolean,
+) {
+  const email = rawEmail.trim().toLowerCase();
+  const listing = await ctx.db
+    .query("alumni")
+    .filter((q) => q.eq(q.field("email"), email))
+    .first();
+  if (!listing) {
+    throw new Error(
+      `No directory profile for ${email}. A member is verified against their own record, so they have to fill in their details first.`,
+    );
+  }
+
+  await ctx.db.patch(listing._id, { verified });
+
+  if (verified) {
+    // Approval also opens the directory, the same as reviewVerification.
+    const existingRole = await ctx.db
+      .query("memberRoles")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    if (!existingRole) {
+      await ctx.db.insert("memberRoles", {
+        email,
+        role: "alumni",
+        updatedAt: Date.now(),
+      });
+    } else if (existingRole.role === "guest") {
+      // An admin or entrepreneur keeps what they have: verifying somebody must
+      // never demote them.
+      await ctx.db.patch(existingRole._id, {
+        role: "alumni",
+        updatedAt: Date.now(),
+      });
+    }
+
+    // Keep any request row in step, so the queue stops showing them.
+    const request = await ctx.db
+      .query("verificationRequests")
+      .withIndex("by_email", (q) => q.eq("email", email))
+      .unique();
+    if (request && request.status !== "approved") {
+      await ctx.db.patch(request._id, {
+        status: "approved",
+        reviewedAt: Date.now(),
+      });
+    }
+  }
+
+  return { email, verified };
+}
+
 export const setVerified = mutation({
   args: { email: v.string(), verified: v.boolean() },
   handler: async (ctx, args) => {
     await requireRole(ctx, ["admin"]);
-
-    const email = args.email.trim().toLowerCase();
-    const listing = await ctx.db
-      .query("alumni")
-      .filter((q) => q.eq(q.field("email"), email))
-      .first();
-    if (!listing) {
-      throw new Error(
-        `No directory profile for ${email}. A member is verified against their own record, so they have to fill in their details first.`,
-      );
-    }
-
-    await ctx.db.patch(listing._id, { verified: args.verified });
-
-    if (args.verified) {
-      // Approval also opens the directory, the same as reviewVerification.
-      const existingRole = await ctx.db
-        .query("memberRoles")
-        .withIndex("by_email", (q) => q.eq("email", email))
-        .unique();
-      if (!existingRole) {
-        await ctx.db.insert("memberRoles", {
-          email,
-          role: "alumni",
-          updatedAt: Date.now(),
-        });
-      } else if (existingRole.role === "guest") {
-        // An admin or entrepreneur keeps what they have: verifying somebody
-        // must never demote them.
-        await ctx.db.patch(existingRole._id, {
-          role: "alumni",
-          updatedAt: Date.now(),
-        });
-      }
-
-      // Keep any request row in step, so the queue stops showing them.
-      const request = await ctx.db
-        .query("verificationRequests")
-        .withIndex("by_email", (q) => q.eq("email", email))
-        .unique();
-      if (request && request.status !== "approved") {
-        await ctx.db.patch(request._id, {
-          status: "approved",
-          reviewedAt: Date.now(),
-        });
-      }
-    }
-
-    return { email, verified: args.verified };
+    return applyVerified(ctx, args.email, args.verified);
   },
+});
+
+/**
+ * The same thing from the terminal, for the bootstrap.
+ *
+ * `setVerified` needs an admin SESSION, which the CLI does not have — and the
+ * first admin has to be able to verify somebody before anybody can use the
+ * console, including themselves. `reviewVerification` cannot stand in for it:
+ * that one answers a row in `verificationRequests`, and the join form that
+ * filed those rows no longer exists, so it fails with "No verification request
+ * for …" on every real member.
+ *
+ * Both call the same `applyVerified`, so the console button and this command
+ * cannot drift into meaning different things.
+ *
+ *   npx convex run access:markVerified {"email":"…","verified":true}
+ */
+export const markVerified = internalMutation({
+  args: { email: v.string(), verified: v.boolean() },
+  handler: async (ctx, args) => applyVerified(ctx, args.email, args.verified),
 });
 
 /**

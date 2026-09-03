@@ -229,6 +229,11 @@ function PeopleToKnow() {
 
 function Stream() {
   const feed = useQuery(api.feed.generalFeed, {});
+  const me = useQuery(api.auth.getCurrentUser);
+  const resolved = useQuery(
+    api.access.roleFor,
+    me?.email ? { email: me.email } : {},
+  );
   const reduce = useReducedMotion();
 
   if (feed === undefined) {
@@ -258,6 +263,33 @@ function Stream() {
           records by hand — this feed is its internal square, so reading it waits
           for that. Everything public stays open to you in the meantime.
         </p>
+
+        {/*
+          WHICH ACCOUNT THIS IS, and it is the whole diagnostic. Roles are
+          keyed on the email address, so somebody granted admin on their
+          college address and signed in with a personal one sees this panel and
+          has no way to tell why. Naming the address turns a mystery into a
+          one-line answer.
+        */}
+        {me?.email ? (
+          <div className="mt-4 rounded-control border border-line bg-bone px-3.5 py-2.5">
+            <p className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-slate-ink">
+              Signed in as
+            </p>
+            <p className="font-mono mt-0.5 break-words text-[0.8rem] text-ink">
+              {me.email}
+            </p>
+            <p className="mt-1.5 text-[0.78rem] leading-snug text-slate-ink">
+              This address resolves to the{" "}
+              <strong className="font-normal text-ink">
+                {resolved?.role ?? "guest"}
+              </strong>{" "}
+              role. Access is granted per address, so if you were expecting more
+              than this, you are probably signed in with a different account
+              than the one the association granted it to.
+            </p>
+          </div>
+        ) : null}
         <div className="mt-5 flex flex-wrap gap-3">
           <Button href="/welcome">Check your details</Button>
           <Button href="/directory" variant="outline">
