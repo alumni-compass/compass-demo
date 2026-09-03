@@ -241,3 +241,136 @@ export const pendingVerifications = query({
       }));
   },
 });
+
+/**
+ * Every member, with the flag an admin is here to change.
+ *
+ * Unverified first, because that is the actionable half — an admin opening this
+ * panel is looking for people to check, not admiring the ones already done.
+ * Capped at a hundred, with the totals reported separately so the cap is
+ * visible rather than silently truncating the association.
+ *
+ * Returns EMAIL, which nothing member-facing does. That is the whole reason it
+ * is admin-only: verification is performed against an address, so whoever does
+ * it has to see which address they are approving.
+ */
+export const membersForVerification = query({
+  args: { text: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (!(await isAdmin(ctx))) {
+      return {
+        authorized: false as const,
+        rows: [],
+        counts: { total: 0, verified: 0, shown: 0 },
+      };
+    }
+
+    const needle = (args.text ?? "").trim().toLowerCase();
+    const all = await ctx.db.query("alumni").collect();
+    const matched = needle
+      ? all.filter(
+          (row) =>
+            row.name.toLowerCase().includes(needle) ||
+            row.email.toLowerCase().includes(needle) ||
+            (row.department ?? "").toLowerCase().includes(needle) ||
+            String(row.batch).includes(needle),
+        )
+      : all;
+
+    const rows = matched
+      .sort(
+        (a, b) =>
+          Number(a.verified) - Number(b.verified) || a.name.localeCompare(b.name),
+      )
+      .slice(0, 100)
+      .map((row) => ({
+        alumniId: row._id,
+        name: row.name,
+        email: row.email,
+        batch: row.batch,
+        department: row.department,
+        verified: row.verified,
+        joinedAt: row.joinedAt,
+      }));
+
+    return {
+      authorized: true as const,
+      rows,
+      counts: {
+        total: all.length,
+        verified: all.filter((row) => row.verified).length,
+        shown: rows.length,
+      },
+    };
+  },
+});
+
+/**
+ * The general feed, as a moderation queue.
+ *
+ * HIDDEN FIRST, then newest. A hidden post is the one an admin may want to
+ * reconsider, and it is invisible to everyone else — so it is the row most
+ * easily forgotten and belongs at the top.
+ *
+ * NO DELETE IS OFFERED, here or in the mutation behind it. Hiding keeps the
+ * post readable to its author and to admins, so a decision can be argued with
+ * and reversed; a delete cannot. That is the same reasoning the schema comment
+ * on `posts.hidden` gives, and an admin who genuinely needs a row gone can
+ * still do it from the CLI.
+ *
+ * Community posts are excluded. Their own moderators handle them, and
+ * `feed.setPostHidden` refuses a portal admin there on purpose.
+ */
+export const postsForModeration = query({
+  args: {},
+  handler: async (ctx) => {
+    if (!(await isAdmin(ctx))) {
+      return { authorized: false as const, rows: [], counts: { total: 0, hidden: 0 } };
+    }
+
+    const recent = await ctx.db
+      .query("posts")
+      .withIndex("by_created")
+      .order("desc")
+      .take(120);
+    const general = recent.filter((post) => post.communityId === undefined);
+
+    const profiles = await ctx.db.query("alumni").collect();
+    const nameByEmail = new Map(
+      profiles.map((row) => [row.email.trim().toLowerCase(), row.name]),
+    );
+
+    const rows = general
+      .sort(
+        (a, b) =>
+          Number(b.hidden) - Number(a.hidden) || b.createdAt - a.createdAt,
+      )
+      .slice(0, 60)
+      .map((post) => ({
+        postId: post._id,
+        authorEmail: post.authorEmail,
+        authorName:
+          nameByEmail.get(post.authorEmail.trim().toLowerCase()) ??
+          post.authorEmail,
+        body: post.body.length > 240 ? `${post.body.slice(0, 240)}…` : post.body,
+        kind: post.kind,
+        hasMedia:
+          post.imageUrls.length > 0 || (post.videoUrls ?? []).length > 0,
+        isShare: post.sharedFromId !== undefined,
+        likeCount: post.likeCount,
+        commentCount: post.commentCount,
+        hidden: post.hidden,
+        hiddenReason: post.hiddenReason ?? null,
+        createdAt: post.createdAt,
+      }));
+
+    return {
+      authorized: true as const,
+      rows,
+      counts: {
+        total: general.length,
+        hidden: general.filter((post) => post.hidden).length,
+      },
+    };
+  },
+});

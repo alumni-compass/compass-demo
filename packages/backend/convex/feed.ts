@@ -7,7 +7,7 @@ import {
   query,
   type QueryCtx,
 } from "./_generated/server";
-import { requireEmail, requireMember } from "./authz";
+import { requireEmail, requireMember, resolveRole } from "./authz";
 import { activeMembership, canModerate, membershipOf, standingOf } from "./communities";
 import { fallbackLabel, normalise, profileIndex } from "./network";
 
@@ -459,14 +459,31 @@ export const setPostHidden = mutation({
     const email = await requireEmail(ctx);
     const post = await ctx.db.get(args.postId);
     if (!post) throw new ConvexError("That post no longer exists.");
+
     if (!post.communityId) {
-      throw new ConvexError(
-        "General-feed posts have no community moderator. Ask the association.",
-      );
-    }
-    const membership = await membershipOf(ctx, post.communityId, email);
-    if (!canModerate(standingOf(membership))) {
-      throw new ConvexError("Only this community's admins can hide a post.");
+      /*
+       * WHO MODERATES THE GENERAL FEED. Nobody did: this refused every
+       * general-feed post outright, on the grounds that there was no community
+       * moderator to appeal to — which left the one feed every member reads
+       * with no moderator at all. A PORTAL admin is the right answer, because
+       * the general feed is the association's own square.
+       *
+       * A community's feed still is NOT theirs to police. A portal admin
+       * reaching into a private group's conversation is the invisible
+       * capability this function has always declined to take, and granting it
+       * now would be a different decision wearing this one's clothes.
+       */
+      const role = await resolveRole(ctx, email);
+      if (role !== "admin") {
+        throw new ConvexError(
+          "Only the association can hide a post in the general feed.",
+        );
+      }
+    } else {
+      const membership = await membershipOf(ctx, post.communityId, email);
+      if (!canModerate(standingOf(membership))) {
+        throw new ConvexError("Only this community's admins can hide a post.");
+      }
     }
 
     await ctx.db.patch(args.postId, {

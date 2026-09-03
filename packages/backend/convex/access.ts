@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 
 import { internalMutation, mutation, query } from "./_generated/server";
+import { requireRole } from "./authz";
 
 /**
  * Module 1 — user roles, access and verification.
@@ -169,6 +170,85 @@ export const reviewVerification = internalMutation({
 // ---------------------------------------------------------------------------
 // Role-based access
 // ---------------------------------------------------------------------------
+
+/**
+ * Marks a member verified, or takes it back. The admin's own button.
+ *
+ * WHY THIS EXISTS BESIDE `reviewVerification`. That one answers a REQUEST: it
+ * needs a row in `verificationRequests` and refuses without one. The join form
+ * that filed those rows is gone, so in practice there are none — and an admin
+ * looking at a real member had no way to verify them at all. This works from
+ * the member's profile instead, which is the record that carries the flag.
+ *
+ * A PUBLIC MUTATION GATED ON THE ROLE, and that is a deliberate promotion.
+ * Every privileged write here used to be `internalMutation`, reachable only
+ * through the CLI, precisely because `/admin` had no access gate and a public
+ * mutation would have let any visitor verify themselves. `requireRole` is that
+ * gate: the caller's address comes from the session token, the role is resolved
+ * server-side, and `admin` is only ever granted by `setRole`, which is still
+ * internal. So this cannot be self-served — the exact condition `adminOps.ts`
+ * named as the prerequisite for promoting these.
+ *
+ * UN-VERIFYING LEAVES THE ROLE ALONE. Verification says whether the office has
+ * checked a roll number; the alumni role is what opens the directory. Stripping
+ * both on one click would quietly evict a member to correct a badge, so the
+ * flag moves and the role stays. Use `setRole` when the role is the thing.
+ */
+export const setVerified = mutation({
+  args: { email: v.string(), verified: v.boolean() },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin"]);
+
+    const email = args.email.trim().toLowerCase();
+    const listing = await ctx.db
+      .query("alumni")
+      .filter((q) => q.eq(q.field("email"), email))
+      .first();
+    if (!listing) {
+      throw new Error(
+        `No directory profile for ${email}. A member is verified against their own record, so they have to fill in their details first.`,
+      );
+    }
+
+    await ctx.db.patch(listing._id, { verified: args.verified });
+
+    if (args.verified) {
+      // Approval also opens the directory, the same as reviewVerification.
+      const existingRole = await ctx.db
+        .query("memberRoles")
+        .withIndex("by_email", (q) => q.eq("email", email))
+        .unique();
+      if (!existingRole) {
+        await ctx.db.insert("memberRoles", {
+          email,
+          role: "alumni",
+          updatedAt: Date.now(),
+        });
+      } else if (existingRole.role === "guest") {
+        // An admin or entrepreneur keeps what they have: verifying somebody
+        // must never demote them.
+        await ctx.db.patch(existingRole._id, {
+          role: "alumni",
+          updatedAt: Date.now(),
+        });
+      }
+
+      // Keep any request row in step, so the queue stops showing them.
+      const request = await ctx.db
+        .query("verificationRequests")
+        .withIndex("by_email", (q) => q.eq("email", email))
+        .unique();
+      if (request && request.status !== "approved") {
+        await ctx.db.patch(request._id, {
+          status: "approved",
+          reviewedAt: Date.now(),
+        });
+      }
+    }
+
+    return { email, verified: args.verified };
+  },
+});
 
 /**
  * The one normal form for an address a role is granted to.

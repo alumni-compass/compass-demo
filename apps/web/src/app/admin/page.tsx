@@ -5,6 +5,8 @@ import { useQuery } from "convex/react";
 import { useState, type ReactNode } from "react";
 
 import DetailsFormAdmin from "@/components/details-form-admin";
+import ModeratePosts from "@/components/moderate-posts";
+import VerifyMembers from "@/components/verify-members";
 import RosterImport from "@/components/roster-import";
 import {
   Button,
@@ -816,6 +818,38 @@ npx convex env set LINKEDIN_CLIENT_SECRET  …`}
             lede="Name and email arrive confirmed from Google or LinkedIn. Everything else on this list is yours to configure: relabel a field, reword its help, reorder it, make it required or optional, edit the batch and department dropdowns, or add a question of your own. Changes reach members immediately — there is no deploy."
           />
           <DetailsFormAdmin />
+        </Shell>
+      </section>
+
+      {/* ---- Verification ------------------------------------------------
+          The one privileged write in this console that is a button rather than
+          a copyable command. It is `access.setVerified`, which calls
+          requireRole(["admin"]) — see the note in verify-members.tsx for why
+          that promotion is safe now and was not before. */}
+      <section id="verify" className="border-t border-line bg-white">
+        <Shell className="py-16 sm:py-20">
+          <SectionHead
+            eyebrow="Verification"
+            title="Who gets the tick"
+            lede="The mark beside a member's name across the portal is one flag on their record. Check the batch and roll number against college records, then set it here — the button records the decision rather than making it."
+          />
+          <VerifyMembers />
+        </Shell>
+      </section>
+
+      {/* ---- Feed moderation ---------------------------------------------
+          The association-wide feed had no moderator at all until now:
+          feed.setPostHidden refused every general-feed post because there was
+          no community moderator to defer to. A portal admin is that moderator
+          — a community's own feed still is not theirs to police. */}
+      <section id="moderate" className="border-t border-line bg-bone-deep">
+        <Shell className="py-16 sm:py-20">
+          <SectionHead
+            eyebrow="Feed moderation"
+            title="The association-wide feed"
+            lede="Hide a post without destroying it, so the decision can be reversed and the author can be told why. Community feeds are moderated by their own admins, and the server refuses a portal admin there on purpose."
+          />
+          <ModeratePosts />
         </Shell>
       </section>
 

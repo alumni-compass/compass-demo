@@ -171,10 +171,18 @@ export function defaultFields(): FieldSeed[] {
     {
       key: "location",
       label: "Current location",
-      help: "Detected from your browser when you allow it, and refreshed each time you sign in. You can always type it yourself.",
+      help: "Detected from your browser when you allow it, and refreshed each time you sign in. You can always type it yourself, or leave it blank.",
       kind: "location",
       options: [],
-      required: true,
+      /*
+       * OPTIONAL, deliberately. A member who declines the browser prompt and
+       * does not know what to type here was being refused a profile
+       * altogether — and `presence.map` already counts "no location shared"
+       * as an ordinary state, so requiring it contradicted the rest of the
+       * portal. An admin can still make it required from the console; the
+       * default should not be the setting that blocks someone at sign-up.
+       */
+      required: false,
       locked: false,
     },
     {
@@ -481,6 +489,11 @@ export const resetOptions = internalMutation({
         options: seed.options,
         label: seed.label,
         help: seed.help,
+        // `required` is part of the default too: a reset that restored the
+        // wording and left the field mandatory would not have fixed the
+        // location field, which is what this was needed for.
+        required: seed.required,
+        locked: seed.locked,
         updatedAt: Date.now(),
       });
       done.push({ key, count: seed.options.length });

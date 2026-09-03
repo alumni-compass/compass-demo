@@ -2,12 +2,11 @@
 
 import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
-import type { GeoJSONSource, MapMouseEvent } from "maplibre-gl";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 import {
   // Aliased: the component is named `Map`, which would shadow the global Map
-  // constructor this file uses to index places by key.
+  // constructor. Everything else keeps the name the mapcn arcs example uses.
   Map as MapCanvas,
   MapArc,
   MapControls,
@@ -15,46 +14,28 @@ import {
   MapPopup,
   MarkerContent,
   MarkerLabel,
-  useMap,
   type MapArcDatum,
 } from "@/components/ui/map";
 import { Button, Eyebrow, Pill } from "@/components/kit";
 
 /**
- * Where the association is, drawn from the locations members have shared.
+ * The association on a globe, built on the mapcn arcs example.
  *
- * MARKERS ARE A GEOJSON LAYER, NOT COMPONENTS. One `<MapMarker>` per place is
- * one DOM node per place, and a directory that grows to a few thousand members
- * across a few hundred towns would be a few hundred absolutely-positioned divs
- * being repositioned on every frame of a pan. The source and the circle layer
- * below live on the WebGL canvas instead, which is what MapLibre is for; the
- * only DOM the map creates is the single popup for the place under the cursor.
+ * THE STRUCTURE IS THE EXAMPLE'S. A hub marker, a marker per destination and
+ * one dashed arc from hub to each — `MapMarker` wrapping `MarkerContent` with a
+ * dot and a `MarkerLabel` above it, the way the docs lay it out, with
+ * `interactive={false}` on the arcs.
  *
- * WHY NOT `MapClusterLayer`, which would have been one line. Clustering counts
- * POINTS, and a point here is a place holding any number of alumni. Three
- * clustered towns of twelve would draw a cluster reading "3" — the marker
- * would be wrong by a factor of twelve, and wrong in the direction that
- * flatters. Counts are the thing the association will read off this map, so the
- * grouping happens server-side in `presence.map`, one feature per place with
- * its own `count`, and the circle is sized by that count rather than by how
- * many dots happen to overlap.
+ * WHAT THAT COSTS, once: a `MapMarker` is a DOM node repositioned on every
+ * frame of a pan, so this scales with the number of PLACES, not members.
+ * `presence.map` groups server-side — one marker per town carrying its own
+ * count — so a thousand alumni across forty towns is forty markers. Forty is
+ * comfortable. Several hundred distinct towns is the point to revisit it.
  *
- * THE NUMBERS ADD UP, and the panel prints all of them. `placed` is what the
- * map can draw, `named` is a member whose place name has not been geocoded yet,
- * `unplaced` is a member who has shared no location. Their sum is the whole
- * membership. A map that showed only `placed` and called it the alumni count
- * would be understating the association by however many people never opened
- * the form.
- *
- * REAL TIME is the Convex subscription, not a refresh loop. `presence.map` is
- * a reactive query: when a member allows detection on sign-in from a new city,
- * every open copy of this map moves their dot and re-totals the counts within
- * the second.
- *
- * NO COUNT IS DRAWN AS TEXT ON THE CANVAS. A symbol layer needs glyphs from the
- * basemap style, and a font the style does not ship is a silent layer error, so
- * the numbers live in the popup and the ranked list — both of which are also
- * selectable and readable by a screen reader, which canvas text is not.
+ * THE COUNTS STILL ADD UP, because the grouping is on the server: a marker's
+ * count is the members in that place, and the markers sum to `placed` exactly.
+ * The three figures the map cannot draw are printed above it rather than
+ * quietly dropped from the total.
  */
 
 type Place = {
@@ -67,170 +48,66 @@ type Place = {
   verified: number;
 };
 
-const SOURCE_ID = "ritaa-places";
-const CIRCLE_LAYER = "ritaa-places-circle";
-const HALO_LAYER = "ritaa-places-halo";
-
-/*
- * Colours for a DARK basemap.
+/**
+ * How far out and in the member may go.
  *
- * Crest maroon is the portal's action colour and it is the wrong choice on a
- * dark globe — a dark red on near-black reads as a smudge. The dots take the
- * pale brass instead, which is still the association's palette and carries
- * against both ocean and land tiles, with an ink stroke so a dot over a bright
- * city glow keeps its edge. Maroon stays for the one thing that should draw the
- * eye first: the campus itself.
+ * MIN_ZOOM is a floor on purpose. Left unbounded, MapLibre keeps pulling back
+ * until the globe is a marble in a grey field — every marker overlaps, the arcs
+ * become a smudge and there is nothing left to read. 1.2 is the whole earth
+ * filling the viewport, which is as far out as this map has anything to say.
+ * The start view is clamped to it too, so a worldwide membership still opens
+ * inside the allowed range rather than being snapped on the first interaction.
  */
+const MIN_ZOOM = 1.2;
+const MAX_ZOOM = 15;
+
+/** Institutional palette, tuned for the dark basemap. */
 const MAROON = "#9b1c31";
 const BRASS = "#b8863b";
 const BRASS_PALE = "#e3c88f";
-const INK = "#151a2e";
 
 /**
- * The places layer.
+ * A starting view that frames the members who exist.
  *
- * A child of `<Map>` rather than a prop on it, because `useMap` is how this
- * component library hands out the MapLibre instance — the same shape the
- * "markers via layers" guidance uses.
+ * The example opens at `zoom={1}`, which on a globe is the whole earth — and
+ * for an association whose members are mostly in one Indian state, that is a
+ * screen of ocean with a cluster of dots too small to read. This measures the
+ * spread of the actual places and picks the zoom that fits them: tight on Tamil
+ * Nadu while everyone is local, pulling back on its own as alumni turn up in
+ * Dubai and Toronto.
+ *
+ * Computed once, when the map mounts. `MapCanvas` takes `center` and `zoom` as
+ * the initial view rather than a controlled one, and the component only renders
+ * after the query has resolved, so the numbers are real by then. A member who
+ * pans or zooms keeps their view — nothing here fights them for it.
  */
-function PlacesLayer({
-  places,
-  onSelect,
-}: {
-  places: Place[];
-  onSelect: (place: Place | null) => void;
-}) {
-  const { map, isLoaded } = useMap();
+function fitView(
+  places: Place[],
+  campus: { lat: number; lng: number } | undefined,
+): { center: [number, number]; zoom: number } {
+  const fallback: [number, number] = [campus?.lng ?? 77.5533, campus?.lat ?? 9.4533];
+  if (places.length === 0) {
+    // Nobody placed yet: frame the campus and its state rather than the planet.
+    return { center: fallback, zoom: 4.2 };
+  }
 
-  const data = useMemo(
-    () => ({
-      type: "FeatureCollection" as const,
-      features: places.map((place) => ({
-        type: "Feature" as const,
-        // Promoted to the feature id so hover and click have a stable handle.
-        id: place.key,
-        geometry: {
-          type: "Point" as const,
-          coordinates: [place.lng, place.lat] as [number, number],
-        },
-        properties: {
-          key: place.key,
-          label: place.label,
-          count: place.count,
-          verified: place.verified,
-        },
-      })),
-    }),
-    [places],
-  );
+  const lngs = [...places.map((p) => p.lng), campus?.lng ?? fallback[0]];
+  const lats = [...places.map((p) => p.lat), campus?.lat ?? fallback[1]];
+  const minLng = Math.min(...lngs);
+  const maxLng = Math.max(...lngs);
+  const minLat = Math.min(...lats);
+  const maxLat = Math.max(...lats);
 
-  useEffect(() => {
-    if (!map || !isLoaded) return;
+  const span = Math.max(maxLng - minLng, maxLat - minLat);
+  const zoom =
+    span > 120 ? 1.1 : span > 60 ? 1.7 : span > 25 ? 2.6 : span > 8 ? 4 : span > 2 ? 5.4 : 6.5;
 
-    const existing = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
-    if (existing) {
-      // The query is reactive, so an update is the common case, not the rare
-      // one: replace the data rather than tearing the layer down and back up.
-      existing.setData(data);
-      return;
-    }
-
-    map.addSource(SOURCE_ID, { type: "geojson", data, promoteId: "key" });
-
-    // A soft halo under the dot, so a single member in a big empty country is
-    // still findable at low zoom without inflating the dot itself.
-    map.addLayer({
-      id: HALO_LAYER,
-      type: "circle",
-      source: SOURCE_ID,
-      paint: {
-        "circle-color": BRASS_PALE,
-        "circle-opacity": 0.16,
-        "circle-radius": [
-          "interpolate",
-          ["linear"],
-          ["get", "count"],
-          1,
-          10,
-          25,
-          22,
-          200,
-          34,
-        ],
-      },
-    });
-
-    // Radius carries the count — area would be more honest still, but at these
-    // magnitudes a linear radius reads better and the exact number is one
-    // click away in the popup and always visible in the list beside the map.
-    map.addLayer({
-      id: CIRCLE_LAYER,
-      type: "circle",
-      source: SOURCE_ID,
-      paint: {
-        "circle-color": BRASS_PALE,
-        "circle-opacity": 0.95,
-        "circle-stroke-width": 1.5,
-        "circle-stroke-color": INK,
-        "circle-radius": [
-          "interpolate",
-          ["linear"],
-          ["get", "count"],
-          1,
-          5,
-          25,
-          11,
-          200,
-          18,
-        ],
-      },
-    });
-  }, [map, isLoaded, data]);
-
-  /* Events are registered once and read the latest features from the map. */
-  useEffect(() => {
-    if (!map || !isLoaded) return;
-
-    const byKey = new Map(places.map((place) => [place.key, place]));
-
-    function onClick(event: MapMouseEvent) {
-      if (!map) return;
-      const hits = map.queryRenderedFeatures(event.point, {
-        layers: [CIRCLE_LAYER],
-      });
-      const key = hits[0]?.properties?.key;
-      onSelect(typeof key === "string" ? (byKey.get(key) ?? null) : null);
-    }
-    function onEnter() {
-      if (map) map.getCanvas().style.cursor = "pointer";
-    }
-    function onLeave() {
-      if (map) map.getCanvas().style.cursor = "";
-    }
-
-    map.on("click", CIRCLE_LAYER, onClick);
-    map.on("mouseenter", CIRCLE_LAYER, onEnter);
-    map.on("mouseleave", CIRCLE_LAYER, onLeave);
-
-    return () => {
-      map.off("click", CIRCLE_LAYER, onClick);
-      map.off("mouseenter", CIRCLE_LAYER, onEnter);
-      map.off("mouseleave", CIRCLE_LAYER, onLeave);
-    };
-  }, [map, isLoaded, places, onSelect]);
-
-  /* Remove what this component added, and nothing else. */
-  useEffect(() => {
-    return () => {
-      if (!map) return;
-      for (const layer of [CIRCLE_LAYER, HALO_LAYER]) {
-        if (map.getLayer(layer)) map.removeLayer(layer);
-      }
-      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
-    };
-  }, [map]);
-
-  return null;
+  return {
+    center: [(minLng + maxLng) / 2, (minLat + maxLat) / 2],
+    // Never below the floor the map enforces, or the opening view would be
+    // snapped the moment anybody touched it.
+    zoom: Math.max(MIN_ZOOM, zoom),
+  };
 }
 
 export default function AlumniMap() {
@@ -241,21 +118,22 @@ export default function AlumniMap() {
   const places: Place[] = presence?.places ?? [];
   const campus = presence?.campus;
 
-  /** One arc per place, campus to member. `count` styles the line width. */
-  const arcs = useMemo<Array<MapArcDatum & { label: string; count: number }>>(() => {
+  /** One arc per place, hub to destination, as in the example. */
+  const arcs = useMemo<Array<MapArcDatum & { count: number }>>(() => {
     if (!campus) return [];
     return places.map((place) => ({
       id: place.key,
       from: [campus.lng, campus.lat] as [number, number],
       to: [place.lng, place.lat] as [number, number],
-      label: place.label,
       count: place.count,
     }));
   }, [places, campus]);
 
+  const view = useMemo(() => fitView(places, campus), [places, campus]);
+
   if (presence === undefined) {
     return (
-      <div className="h-[32rem] w-full animate-pulse rounded-card border border-line bg-surface-sunk" />
+      <div className="h-[76vh] min-h-[30rem] w-full animate-pulse rounded-card border border-line bg-surface-sunk" />
     );
   }
 
@@ -312,22 +190,15 @@ export default function AlumniMap() {
         {totals.unplaced} have not filled in a location.
       </p>
 
-      {/*
-        THE MAP GETS THE WHOLE WIDTH, and most of the window height.
-        It was sharing a row with the place list at 34rem tall, which left the
-        globe about a third of the screen — small enough that two members in
-        neighbouring cities were one dot and the arcs had no room to curve. A
-        map of the world wants the room; the list reads perfectly well beneath
-        it, and it is a table of numbers rather than something to look at side
-        by side with the thing it describes.
-      */}
       <div className="relative h-[76vh] min-h-[30rem] overflow-hidden rounded-card border border-line-strong bg-ink shadow-lift">
         <MapCanvas
           className="size-full"
           theme="dark"
+          center={view.center}
+          zoom={view.zoom}
+          minZoom={MIN_ZOOM}
+          maxZoom={MAX_ZOOM}
           projection={{ type: "globe" }}
-          zoom={1.1}
-          center={[campus?.lng ?? 77.5533, campus?.lat ?? 9.4533]}
           attributionControl={{ compact: true }}
         >
           <MapControls
@@ -341,51 +212,67 @@ export default function AlumniMap() {
           {showArcs ? (
             <MapArc
               data={arcs}
-              curvature={0.28}
               paint={{
                 "line-color": BRASS,
-                "line-opacity": 0.55,
                 "line-dasharray": [2, 2],
-                // Every field on the datum but from/to is available to an
-                // expression, so the busiest routes read as the thickest.
+                // Every field on the datum but from/to reaches an expression,
+                // so the busiest routes read as the thickest line.
                 "line-width": [
                   "interpolate",
                   ["linear"],
                   ["get", "count"],
                   1,
-                  0.7,
+                  0.8,
                   25,
                   2.2,
                   200,
                   3.6,
                 ],
               }}
-              hoverPaint={{ "line-color": BRASS_PALE, "line-opacity": 1 }}
-              onClick={(event) => {
-                const place = places.find((row) => row.key === event.arc.id);
-                if (place) setSelected(place);
-              }}
+              interactive={false}
             />
           ) : null}
 
-          <PlacesLayer places={places} onSelect={setSelected} />
-
-          {/* The one DOM marker on the map, for the one place that is not a
-              member: the campus every arc runs back to. A layer would be the
-              wrong tool for a single labelled point. */}
+          {/* The hub: the institute every arc runs back to. */}
           {campus ? (
             <MapMarker longitude={campus.lng} latitude={campus.lat}>
               <MarkerContent>
-                <span className="block size-3 rounded-full border-2 border-bone bg-maroon shadow-lift" />
+                <div
+                  className="size-3 rounded-full border-2 border-white"
+                  style={{ backgroundColor: MAROON }}
+                />
                 <MarkerLabel
                   position="top"
-                  className="font-mono rounded-sm bg-bone/90 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-ink backdrop-blur"
+                  className="font-mono rounded-sm bg-bone/85 px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-ink backdrop-blur"
                 >
                   Rajapalayam
                 </MarkerLabel>
               </MarkerContent>
             </MapMarker>
           ) : null}
+
+          {/* One marker per place. The count rides in the label, because a
+              marker reading "Chennai" that hides the twelve people behind it is
+              the map understating the association. */}
+          {places.map((place) => (
+            <MapMarker
+              key={place.key}
+              longitude={place.lng}
+              latitude={place.lat}
+              onClick={() => setSelected(place)}
+            >
+              <MarkerContent>
+                <div
+                  className="size-2 cursor-pointer rounded-full border-2 border-white"
+                  style={{ backgroundColor: BRASS_PALE }}
+                />
+                <MarkerLabel position="top">
+                  {place.label.split(",")[0]}
+                  {place.count > 1 ? ` · ${place.count}` : ""}
+                </MarkerLabel>
+              </MarkerContent>
+            </MapMarker>
+          ))}
 
           {selected ? (
             <MapPopup
