@@ -11,7 +11,10 @@ import {
   Map as MapCanvas,
   MapArc,
   MapControls,
+  MapMarker,
   MapPopup,
+  MarkerContent,
+  MarkerLabel,
   useMap,
   type MapArcDatum,
 } from "@/components/ui/map";
@@ -68,9 +71,20 @@ const SOURCE_ID = "ritaa-places";
 const CIRCLE_LAYER = "ritaa-places-circle";
 const HALO_LAYER = "ritaa-places-halo";
 
-/** Crest maroon, so the map reads as part of the portal rather than a widget. */
+/*
+ * Colours for a DARK basemap.
+ *
+ * Crest maroon is the portal's action colour and it is the wrong choice on a
+ * dark globe — a dark red on near-black reads as a smudge. The dots take the
+ * pale brass instead, which is still the association's palette and carries
+ * against both ocean and land tiles, with an ink stroke so a dot over a bright
+ * city glow keeps its edge. Maroon stays for the one thing that should draw the
+ * eye first: the campus itself.
+ */
 const MAROON = "#9b1c31";
 const BRASS = "#b8863b";
+const BRASS_PALE = "#e3c88f";
+const INK = "#151a2e";
 
 /**
  * The places layer.
@@ -130,8 +144,8 @@ function PlacesLayer({
       type: "circle",
       source: SOURCE_ID,
       paint: {
-        "circle-color": MAROON,
-        "circle-opacity": 0.14,
+        "circle-color": BRASS_PALE,
+        "circle-opacity": 0.16,
         "circle-radius": [
           "interpolate",
           ["linear"],
@@ -154,10 +168,10 @@ function PlacesLayer({
       type: "circle",
       source: SOURCE_ID,
       paint: {
-        "circle-color": MAROON,
-        "circle-opacity": 0.9,
+        "circle-color": BRASS_PALE,
+        "circle-opacity": 0.95,
         "circle-stroke-width": 1.5,
-        "circle-stroke-color": "#ffffff",
+        "circle-stroke-color": INK,
         "circle-radius": [
           "interpolate",
           ["linear"],
@@ -298,90 +312,121 @@ export default function AlumniMap() {
         {totals.unplaced} have not filled in a location.
       </p>
 
-      <div className="grid gap-5 lg:grid-cols-[1.7fr_1fr] lg:items-start">
-        <div className="relative h-[34rem] overflow-hidden rounded-card border border-line">
-          <MapCanvas
-            className="size-full"
-            theme="light"
-            projection={{ type: "globe" }}
-            zoom={1.4}
-            center={[campus?.lng ?? 77.5533, campus?.lat ?? 9.4533]}
-            attributionControl={{ compact: true }}
-          >
-            <MapControls
-              position="bottom-right"
-              showZoom
-              showCompass
-              showFullscreen
-              showLocate={false}
+      {/*
+        THE MAP GETS THE WHOLE WIDTH, and most of the window height.
+        It was sharing a row with the place list at 34rem tall, which left the
+        globe about a third of the screen — small enough that two members in
+        neighbouring cities were one dot and the arcs had no room to curve. A
+        map of the world wants the room; the list reads perfectly well beneath
+        it, and it is a table of numbers rather than something to look at side
+        by side with the thing it describes.
+      */}
+      <div className="relative h-[76vh] min-h-[30rem] overflow-hidden rounded-card border border-line-strong bg-ink shadow-lift">
+        <MapCanvas
+          className="size-full"
+          theme="dark"
+          projection={{ type: "globe" }}
+          zoom={1.1}
+          center={[campus?.lng ?? 77.5533, campus?.lat ?? 9.4533]}
+          attributionControl={{ compact: true }}
+        >
+          <MapControls
+            position="bottom-right"
+            showZoom
+            showCompass
+            showFullscreen
+            showLocate={false}
+          />
+
+          {showArcs ? (
+            <MapArc
+              data={arcs}
+              curvature={0.28}
+              paint={{
+                "line-color": BRASS,
+                "line-opacity": 0.55,
+                "line-dasharray": [2, 2],
+                // Every field on the datum but from/to is available to an
+                // expression, so the busiest routes read as the thickest.
+                "line-width": [
+                  "interpolate",
+                  ["linear"],
+                  ["get", "count"],
+                  1,
+                  0.7,
+                  25,
+                  2.2,
+                  200,
+                  3.6,
+                ],
+              }}
+              hoverPaint={{ "line-color": BRASS_PALE, "line-opacity": 1 }}
+              onClick={(event) => {
+                const place = places.find((row) => row.key === event.arc.id);
+                if (place) setSelected(place);
+              }}
             />
+          ) : null}
 
-            {showArcs ? (
-              <MapArc
-                data={arcs}
-                curvature={0.28}
-                paint={{
-                  "line-color": BRASS,
-                  "line-opacity": 0.5,
-                  // Every field on the datum but from/to is available to an
-                  // expression, so the busiest routes read as the thickest.
-                  "line-width": [
-                    "interpolate",
-                    ["linear"],
-                    ["get", "count"],
-                    1,
-                    0.6,
-                    25,
-                    2,
-                    200,
-                    3.5,
-                  ],
-                }}
-                hoverPaint={{ "line-color": MAROON, "line-opacity": 0.95 }}
-                onClick={(event) => {
-                  const place = places.find((row) => row.key === event.arc.id);
-                  if (place) setSelected(place);
-                }}
-              />
-            ) : null}
+          <PlacesLayer places={places} onSelect={setSelected} />
 
-            <PlacesLayer places={places} onSelect={setSelected} />
+          {/* The one DOM marker on the map, for the one place that is not a
+              member: the campus every arc runs back to. A layer would be the
+              wrong tool for a single labelled point. */}
+          {campus ? (
+            <MapMarker longitude={campus.lng} latitude={campus.lat}>
+              <MarkerContent>
+                <span className="block size-3 rounded-full border-2 border-bone bg-maroon shadow-lift" />
+                <MarkerLabel
+                  position="top"
+                  className="font-mono rounded-sm bg-bone/90 px-1.5 py-0.5 text-[10px] uppercase tracking-[0.1em] text-ink backdrop-blur"
+                >
+                  Rajapalayam
+                </MarkerLabel>
+              </MarkerContent>
+            </MapMarker>
+          ) : null}
 
-            {selected ? (
-              <MapPopup
-                longitude={selected.lng}
-                latitude={selected.lat}
-                closeButton
-                onClose={() => setSelected(null)}
-              >
-                <p className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-slate-ink">
-                  {selected.label}
+          {selected ? (
+            <MapPopup
+              longitude={selected.lng}
+              latitude={selected.lat}
+              closeButton
+              onClose={() => setSelected(null)}
+            >
+              <p className="font-mono text-[0.62rem] uppercase tracking-[0.12em] text-slate-ink">
+                {selected.label}
+              </p>
+              <p className="font-display mt-1 text-lg text-ink">
+                {selected.count} member{selected.count === 1 ? "" : "s"}
+              </p>
+              <p className="mt-0.5 text-[0.75rem] text-slate-ink">
+                {selected.verified} verified
+              </p>
+              {selected.names.length > 0 ? (
+                <p className="mt-2 border-t border-line pt-2 text-[0.78rem] leading-snug text-ink">
+                  {selected.names.join(", ")}
                 </p>
-                <p className="font-display mt-1 text-lg text-ink">
-                  {selected.count} member{selected.count === 1 ? "" : "s"}
+              ) : (
+                <p className="mt-2 border-t border-line pt-2 text-[0.75rem] leading-snug text-slate-ink">
+                  Too many to name here — open the directory and filter by this
+                  place.
                 </p>
-                <p className="mt-0.5 text-[0.75rem] text-slate-ink">
-                  {selected.verified} verified
-                </p>
-                {selected.names.length > 0 ? (
-                  <p className="mt-2 border-t border-line pt-2 text-[0.78rem] leading-snug text-ink">
-                    {selected.names.join(", ")}
-                  </p>
-                ) : (
-                  <p className="mt-2 border-t border-line pt-2 text-[0.75rem] leading-snug text-slate-ink">
-                    Too many to name here — open the directory and filter by
-                    this place.
-                  </p>
-                )}
-              </MapPopup>
-            ) : null}
-          </MapCanvas>
-        </div>
+              )}
+            </MapPopup>
+          ) : null}
+        </MapCanvas>
+      </div>
 
-        {/* The list is the audit trail for the map: same numbers, readable. */}
-        <div className="rounded-card border border-line bg-surface">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-4">
-            <Eyebrow>Every place, by size</Eyebrow>
+      {/* The list is the audit trail for the map: same numbers, readable. */}
+      <div className="rounded-card border border-line bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-4">
+          <Eyebrow>Every place, by size</Eyebrow>
+          <div className="flex items-center gap-3">
+            <Pill tone="quiet">
+              Sum of the list:{" "}
+              {places.reduce((sum, place) => sum + place.count, 0)}
+            </Pill>
             <button
               type="button"
               onClick={() => setShowArcs((value) => !value)}
@@ -390,42 +435,36 @@ export default function AlumniMap() {
               {showArcs ? "Hide arcs" : "Show arcs"}
             </button>
           </div>
-
-          {places.length === 0 ? (
-            <p className="p-5 text-[0.85rem] leading-relaxed text-slate-ink">
-              Nobody has a located place yet. As members fill in the details
-              form — or allow the per-sign-in refresh — they appear here and on
-              the map without anyone reloading.
-            </p>
-          ) : (
-            <ul className="max-h-[27rem] divide-y divide-line overflow-y-auto">
-              {places.map((place) => (
-                <li key={place.key}>
-                  <button
-                    type="button"
-                    onClick={() => setSelected(place)}
-                    className={`flex w-full items-baseline justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-bone ${
-                      selected?.key === place.key ? "bg-bone" : ""
-                    }`}
-                  >
-                    <span className="text-[0.85rem] leading-snug text-ink">
-                      {place.label}
-                    </span>
-                    <span className="font-mono shrink-0 text-[0.75rem] tabular-nums text-maroon">
-                      {place.count}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div className="border-t border-line p-4">
-            <Pill tone="quiet">
-              Sum of the list: {places.reduce((sum, place) => sum + place.count, 0)}
-            </Pill>
-          </div>
         </div>
+
+        {places.length === 0 ? (
+          <p className="p-5 text-[0.85rem] leading-relaxed text-slate-ink">
+            Nobody has a located place yet. As members fill in the details form
+            — or allow the per-sign-in refresh — they appear here and on the map
+            without anyone reloading.
+          </p>
+        ) : (
+          <ul className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-3">
+            {places.map((place) => (
+              <li key={place.key} className="bg-surface">
+                <button
+                  type="button"
+                  onClick={() => setSelected(place)}
+                  className={`flex w-full items-baseline justify-between gap-3 px-4 py-2.5 text-left transition-colors hover:bg-bone ${
+                    selected?.key === place.key ? "bg-bone" : ""
+                  }`}
+                >
+                  <span className="min-w-0 truncate text-[0.85rem] leading-snug text-ink">
+                    {place.label}
+                  </span>
+                  <span className="font-mono shrink-0 text-[0.75rem] tabular-nums text-maroon">
+                    {place.count}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     </div>
   );

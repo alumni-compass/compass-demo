@@ -35,6 +35,17 @@ import {
  * the boxes — bouncing them to the dashboard would make the "edit your details"
  * link from the dashboard useless the moment it worked.
  */
+/** The verified state, as the masthead pill. */
+function VerifiedPill() {
+  const profile = useQuery(api.profiles.byEmail);
+  if (profile === undefined || profile === null) return null;
+  return profile.verified ? (
+    <Pill tone="jade">Verified alumnus</Pill>
+  ) : (
+    <Pill tone="dark">Not verified yet</Pill>
+  );
+}
+
 function Completeness() {
   const status = useQuery(api.profiles.completeness);
 
@@ -73,7 +84,10 @@ export default function WelcomePage() {
         lede="Your name and address came from the account you signed in with. The rest is what makes you findable in the directory — and the association can change what is asked here without a new release."
       >
         <Authenticated>
-          <Completeness />
+          <div className="flex flex-wrap gap-2">
+            <Completeness />
+            <VerifiedPill />
+          </div>
         </Authenticated>
       </PageHeader>
 

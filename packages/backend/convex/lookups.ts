@@ -43,7 +43,8 @@ import { requireActionIdentity } from "./authz";
 
 /** Suggestion lists are for choosing from, not browsing. */
 const LIMIT = 8;
-const MIN_QUERY = 2;
+/** One character is enough to start looking; the cache absorbs the volume. */
+const MIN_QUERY = 1;
 /** A suggestion box that has not answered in three seconds is not helping. */
 const TIMEOUT_MS = 3000;
 

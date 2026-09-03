@@ -14,6 +14,7 @@ import {
   Eyebrow,
   LoadingRows,
   Pill,
+  VerifiedMark,
 } from "@/components/kit";
 import { batchLabelForYear, batchYearFromLabel, RITAA } from "@/lib/site";
 
@@ -122,22 +123,38 @@ function Row({
 
 type Suggestion = { label: string; hint?: string | null; iconUrl?: string | null };
 
+/** One character is enough to start looking. */
+const MIN_CHARS = 1;
+
 /**
  * Type-to-search over a live source, with free text always accepted.
  *
- * WHY IT IS FAST NOW. It used to call a Convex action on every surviving
- * keystroke, and an action is a server round trip that reaches out to a third
- * party before anything appears — typing an employer name was half a dozen
- * trips through somebody else's endpoint. This asks a QUERY first, which rides
- * the socket the app already holds and answers from `lookupCache` immediately.
- * Only a genuine miss fires the action, once per distinct query, and the action
- * writes the cache row; the query is already subscribed, so the answer arrives
- * without asking again. Backspacing is free, and the second member to type
- * "infos" never waits at all.
+ * WHAT OPENS THE LIST, and why that took two goes to get right. The first
+ * version opened it from an effect that watched the RESULTS:
  *
- * The list is advisory. `onChange` fires on every keystroke, so what the member
- * typed is already the value before any suggestion is picked — which is what
- * makes this safe for employer and job title, where no closed list is complete.
+ *     useEffect(() => { if (rows.length > 0) setOpen(true) }, [rows.length])
+ *
+ * which has nothing to do with what the member is doing. Two bugs fell out of
+ * it. A field arriving with a saved value searched on mount, so the list
+ * appeared over a form nobody had touched. And because every box re-runs its
+ * effects when the form re-renders, clicking into the employer field opened the
+ * position field's list at the same time — each box was opening on its own
+ * data, not on its own focus.
+ *
+ * Now opening requires all of: this input is focused, the member has typed in
+ * THIS box, they have not dismissed it, and there is something to show. None of
+ * those can be true for a box the member is not in, so the fields cannot open
+ * each other, and nothing searches until somebody types.
+ *
+ * There is no `onBlur`. Closing on blur races the click on the option — blur
+ * fires first and the option unmounts before its handler runs. A mousedown
+ * listener outside the component closes it instead, which is the one order that
+ * works.
+ *
+ * WHY IT IS FAST. It asks a QUERY first, which rides the socket the app already
+ * holds and answers from `lookupCache` immediately. Only a genuine miss fires
+ * the action, once per distinct query; the action writes the cache row and this
+ * subscription delivers it without asking again. Backspacing is free.
  */
 function SuggestBox({
   id,
@@ -152,31 +169,34 @@ function SuggestBox({
   placeholder?: string;
   onChange: (value: string, extra?: { domain?: string | null }) => void;
 }) {
-  const [open, setOpen] = useState(false);
-  const [typed, setTyped] = useState(value.trim());
+  const [focused, setFocused] = useState(false);
+  /** True once the member has typed in this box. Gates both search and open. */
+  const [dirty, setDirty] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  const [typed, setTyped] = useState("");
   const wrap = useRef<HTMLDivElement>(null);
-  /** One action per distinct query, however many renders it takes. */
+  /** One action per distinct query, however many times this re-renders. */
   const asked = useRef<Set<string>>(new Set());
 
   const suggestCompanies = useAction(api.lookups.companies);
   const suggestPositions = useAction(api.lookups.positions);
 
-  // Short debounce: the query below is local, so there is far less to protect
-  // against than when every keystroke went to the network.
+  // Short debounce: the read below is local, so there is much less to protect
+  // against than when every keystroke went out to the network.
   useEffect(() => {
     const timer = setTimeout(() => setTyped(value.trim()), 140);
     return () => clearTimeout(timer);
   }, [value]);
 
-  const query = typed.length >= 2 ? typed : "";
-  const cached = useQuery(
-    api.lookups.cached,
-    query ? { kind, query } : "skip",
-  );
+  /* Nothing is searched until this box has been typed in — which is also what
+     stops a saved value from firing a lookup the moment the form opens. */
+  const query = dirty && typed.length >= MIN_CHARS ? typed : "";
+
+  const cached = useQuery(api.lookups.cached, query ? { kind, query } : "skip");
 
   useEffect(() => {
     if (!query) return;
-    // Wait for the cache answer before deciding it is a miss.
+    // Wait for the cache to answer before deciding this is a miss.
     if (cached === undefined) return;
     if (cached.hit && !cached.stale) return;
     if (asked.current.has(query)) return;
@@ -184,7 +204,7 @@ function SuggestBox({
 
     const run = kind === "company" ? suggestCompanies : suggestPositions;
     void run({ query }).catch(() => {
-      // A dead source must not interrupt typing; the box just stays empty.
+      // A dead source must not interrupt typing; retry on the next keystroke.
       asked.current.delete(query);
     });
   }, [query, cached, kind, suggestCompanies, suggestPositions]);
@@ -201,24 +221,25 @@ function SuggestBox({
     return raw.map((row) => ({ label: String(row.title ?? "") }));
   })().filter((row) => row.label);
 
+  /* Derived, not stored: there is no state that can be left open by mistake. */
+  const open = focused && dirty && !dismissed && rows.length > 0;
   const waiting = Boolean(query) && cached !== undefined && !cached.hit;
 
   useEffect(() => {
-    if (rows.length > 0 && typed.length >= 2) setOpen(true);
-  }, [rows.length, typed]);
-
-  useEffect(() => {
     if (!open) return;
-    function onClick(event: MouseEvent) {
-      if (!wrap.current?.contains(event.target as Node)) setOpen(false);
+    function onDown(event: MouseEvent) {
+      if (!wrap.current?.contains(event.target as Node)) {
+        setFocused(false);
+        setDismissed(true);
+      }
     }
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
+      if (event.key === "Escape") setDismissed(true);
     }
-    document.addEventListener("mousedown", onClick);
+    document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
@@ -234,9 +255,14 @@ function SuggestBox({
         role="combobox"
         aria-expanded={open}
         aria-autocomplete="list"
-        onChange={(event) => onChange(event.target.value)}
         onFocus={() => {
-          if (rows.length > 0) setOpen(true);
+          setFocused(true);
+          setDismissed(false);
+        }}
+        onChange={(event) => {
+          setDirty(true);
+          setDismissed(false);
+          onChange(event.target.value);
         }}
       />
       {waiting ? (
@@ -245,7 +271,7 @@ function SuggestBox({
         </span>
       ) : null}
 
-      {open && rows.length > 0 ? (
+      {open ? (
         <ul
           role="listbox"
           className="absolute z-20 mt-1 max-h-64 w-full overflow-y-auto rounded-card border border-line-strong bg-surface shadow-lift"
@@ -257,7 +283,9 @@ function SuggestBox({
                 className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-bone"
                 onClick={() => {
                   onChange(row.label, { domain: row.hint ?? null });
-                  setOpen(false);
+                  // Picking one is an answer, so the list is done.
+                  setDirty(false);
+                  setDismissed(true);
                 }}
               >
                 {row.iconUrl ? (
@@ -270,7 +298,7 @@ function SuggestBox({
                     loading="lazy"
                     className="size-5 shrink-0 rounded-[3px] bg-bone object-contain"
                     /* A company with no mark on file must not leave a broken
-                       image icon in a dropdown — hide it and keep the row. */
+                       image icon in the list — hide it, keep the row. */
                     onError={(event) => {
                       event.currentTarget.style.visibility = "hidden";
                     }}
@@ -535,11 +563,34 @@ export default function DetailsForm({
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Eyebrow>Your details</Eyebrow>
+          <div className="flex flex-wrap items-center gap-2">
+            <Eyebrow>Your details</Eyebrow>
+            {/*
+              The tick is granted, never claimed. `alumni.verified` is written
+              only by `access.reviewVerification`, an internalMutation the
+              office runs after checking a roll number against college records
+              — so nothing a member does on this form can turn it on, and
+              re-saving cannot turn it off. Showing the state here is the point:
+              this is the page where somebody wonders whether they are verified.
+            */}
+            {profile?.verified ? (
+              <VerifiedMark />
+            ) : profile ? (
+              <Pill tone="brass">Awaiting verification</Pill>
+            ) : null}
+          </div>
           <Pill tone="quiet">
             {fields.length} field{fields.length === 1 ? "" : "s"}
           </Pill>
         </div>
+
+        {profile && !profile.verified ? (
+          <p className={`mt-2 ${HINT}`}>
+            Filling this in does not verify you. The association checks your
+            batch and roll number against college records by hand, and the tick
+            appears here when they do.
+          </p>
+        ) : null}
 
         <div className="mt-5">
           {fields.map((field) => {
