@@ -47,8 +47,21 @@ function trustedOrigins(): string[] {
   const origins = new Set<string>();
 
   const add = (value: string | undefined) => {
-    const trimmed = value?.trim().replace(/\/+$/, "");
-    if (trimmed) origins.add(trimmed);
+    const trimmed = value?.trim();
+    if (!trimmed) return;
+    /*
+     * A trailing slash is stripped from a WEB origin only, because
+     * `https://x.org/` and `https://x.org` must not become two entries.
+     *
+     * A custom scheme is left exactly as configured. Better Auth matches a
+     * non-http pattern with `startsWith`, so trimming `RIT-ALUMINI://` down to
+     * `RIT-ALUMINI:` silently widens it to every URL beginning with that
+     * scheme rather than the app's own callback — a broader trust than anyone
+     * wrote down, which is the kind that gets discovered later.
+     */
+    origins.add(
+      /^https?:\/\//i.test(trimmed) ? trimmed.replace(/\/+$/, "") : trimmed,
+    );
   };
 
   add(siteUrl);
