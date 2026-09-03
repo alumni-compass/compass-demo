@@ -32,6 +32,7 @@ import {
   TabBar,
   VerifiedMark,
 } from "@/components/kit";
+import FindPeople from "@/components/find-people";
 import { DEPARTMENT_NAMES, formatDate, RITAA } from "@/lib/site";
 
 /**
@@ -51,7 +52,7 @@ import { DEPARTMENT_NAMES, formatDate, RITAA } from "@/lib/site";
 type Network = FunctionReturnType<typeof api.network.myNetwork>;
 type Suggestions = FunctionReturnType<typeof api.network.suggestions>;
 type Member = Network["connections"][number]["member"];
-type Tab = "requests" | "connections" | "sent" | "suggestions";
+type Tab = "find" | "requests" | "connections" | "sent" | "suggestions";
 
 /** Turns a Convex refusal into the sentence the handler actually wrote. */
 function reason(error: unknown) {
@@ -523,7 +524,12 @@ function NetworkPanels() {
   // something on it, not always the same one.
   const [tab, setTab] = useState<Tab | null>(null);
   const active: Tab =
-    tab ?? ((network?.counts.incoming ?? 0) > 0 ? "requests" : "connections");
+    tab ??
+    ((network?.counts.incoming ?? 0) > 0
+      ? "requests"
+      : (network?.counts.connections ?? 0) > 0
+        ? "connections"
+        : "find");
 
   if (network === undefined) {
     return (
@@ -541,6 +547,7 @@ function NetworkPanels() {
   }
 
   const tabs: Array<{ id: Tab; label: string; count?: number }> = [
+    { id: "find", label: "Find people" },
     { id: "requests", label: "Requests", count: network.counts.incoming },
     { id: "connections", label: "Connections", count: network.counts.connections },
     { id: "sent", label: "Sent", count: network.counts.outgoing },
@@ -565,11 +572,14 @@ function NetworkPanels() {
           label="Which part of your network"
         />
         <Button href="/directory" variant="outline" size="sm">
-          Find members
+          Full directory
         </Button>
       </div>
 
       <div className="mt-6">
+        {/* Search sits in the same tab strip as the requests, so finding
+            somebody and answering the person who found you are one page. */}
+        {active === "find" ? <FindPeople /> : null}
         {active === "requests" ? <IncomingList rows={network.incoming} /> : null}
         {active === "connections" ? (
           <ConnectionsList rows={network.connections} />

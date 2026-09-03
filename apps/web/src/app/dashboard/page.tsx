@@ -20,8 +20,58 @@ import {
 } from "@/components/kit";
 import { formatDate, formatEventDate, RITAA } from "@/lib/site";
 
+/**
+ * Points a member at the details form until they have finished it.
+ *
+ * Reads `profiles.completeness`, which derives the answer from whatever the
+ * admin has configured as required rather than from a stored flag — so making
+ * a field required in the console reopens this for everyone who never answered
+ * it, and nobody is marked complete against a form that no longer exists.
+ */
+function DetailsNudge() {
+  const status = useQuery(api.profiles.completeness);
+  if (status === undefined || status.complete) return null;
+
+  return (
+    <div className="mt-10">
+      <Card>
+        <div className="flex flex-wrap items-center gap-3">
+          <Eyebrow>Finish setting up</Eyebrow>
+          {status.hasProfile ? (
+            <Pill tone="brass">
+              {status.answered} of {status.total} answered
+            </Pill>
+          ) : (
+            <Pill tone="maroon">Nothing filled in yet</Pill>
+          )}
+        </div>
+        <h3 className="font-display mt-2 text-xl text-ink">
+          {status.hasProfile
+            ? "A few details are still missing"
+            : "Tell the association who you are"}
+        </h3>
+        <p className="mt-2 max-w-2xl text-[0.9rem] leading-relaxed text-slate-ink">
+          {status.missing.length > 0
+            ? `Still needed: ${status.missing.map((field) => field.label).join(", ")}.`
+            : "Your name and email came from your sign-in. The rest is what makes you findable in the directory."}
+        </p>
+        <div className="mt-5">
+          <Button href="/welcome">
+            {status.hasProfile ? "Finish your details" : "Fill in your details"}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
 /** Where a signed-in member most often wants to go next. */
 const SHORTCUTS = [
+  {
+    href: "/map",
+    title: "Where everyone is",
+    copy: "The association on a map, drawn from the places members have shared — and every arc runs back to Rajapalayam.",
+  },
   {
     href: "/network",
     title: "Your network",
@@ -129,7 +179,12 @@ function MemberDashboard() {
         </Button>
       </div>
 
-      {/* Verification is the gate on directory access, so surface it plainly. */}
+      <DetailsNudge />
+
+      {/* Verification is the gate on directory access, so surface it plainly.
+          There is no form to send anyone to: /join is the sign-in screen and
+          nothing in the portal calls access.requestVerification any more, so
+          this names the office rather than offering a step that dead-ends. */}
       {verification === null ? (
         <div className="mt-10">
           <Card>
@@ -140,10 +195,14 @@ function MemberDashboard() {
             <p className="mt-2 max-w-2xl text-[0.9rem] leading-relaxed text-slate-ink">
               The association checks your roll number against college records before
               your profile joins the directory. It is a manual check, so allow a few
-              days.
+              days. There is no form on the site for it at the moment — write to the
+              office with your batch, department and roll number and they will file
+              the request.
             </p>
             <div className="mt-5">
-              <Button href="/join">Start verification</Button>
+              <Button href={`mailto:${RITAA.email}?subject=Alumni%20verification`}>
+                Write to the office
+              </Button>
             </div>
           </Card>
         </div>
@@ -262,7 +321,7 @@ export default function DashboardPage() {
         <Shell className="py-16">
           <Empty
             title="You are not signed in"
-            hint="Create an account or sign in, then verify your batch and department so the association can confirm you studied at RIT."
+            hint="One click with Google or LinkedIn creates your account and opens your profile, the directory, mentorship and giving."
             action={<Button href="/join">Sign in or join RITAA</Button>}
           />
         </Shell>

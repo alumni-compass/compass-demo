@@ -22,6 +22,10 @@ import { normalise } from "./network";
  *   poll          — created with a post in `feed.createPost`, not here. This
  *                   module refuses to author one, so a poll can never exist
  *                   without the post it belongs to.
+ *   profile       — the extra questions on the member details form, on top of
+ *                   the eleven configured fields in `profileFields.ts`. Also a
+ *                   PORTAL admin, for the same reason as verification: it is
+ *                   asked of everyone.
  *
  * WHO MAY AUTHOR WHAT IS THE WHOLE POINT of splitting the write path by scope.
  * A community admin must not be able to add a question to the association's
@@ -35,12 +39,13 @@ const MAX_OPTION = 120;
 const MAX_OPTIONS = 8;
 const MAX_PER_SCOPE = 15;
 
-type Scope = "verification" | "communityJoin" | "poll";
+type Scope = "verification" | "communityJoin" | "poll" | "profile";
 
 const scopeValidator = v.union(
   v.literal("verification"),
   v.literal("communityJoin"),
   v.literal("poll"),
+  v.literal("profile"),
 );
 
 const kindValidator = v.union(
@@ -65,7 +70,7 @@ async function authorizeScope(
     );
   }
 
-  if (scope === "verification") {
+  if (scope === "verification" || scope === "profile") {
     const { email } = await requireRole(ctx, ["admin"]);
     return email;
   }
@@ -359,78 +364,156 @@ export const communityQuestions = query({
  * one answer should not have to re-file their whole request. Answers are keyed on
  * the session, so a caller can only ever write their own.
  */
+/**
+ * Validates and stores one member's answers for a whole scope.
+ *
+ * Shared by the verification form and the member details form. The rules it
+ * enforces are the same in both places: a required question must be answered,
+ * a choice must be one of the offered options, and one member has exactly one
+ * answer per question — which is why an existing row is patched rather than a
+ * second one inserted.
+ */
+async function saveScopedAnswers(
+  ctx: MutationCtx,
+  scope: Scope,
+  email: string,
+  answers: Array<{ questionId: Id<"questions">; answer: string }>,
+) {
+  const live = await ctx.db
+    .query("questions")
+    .withIndex("by_scope", (q) => q.eq("scope", scope).eq("active", true))
+    .collect();
+  const byId = new Map(live.map((row) => [row._id, row]));
+  const supplied = new Map(answers.map((a) => [a.questionId, a.answer.trim()]));
+
+  for (const question of live) {
+    const answer = supplied.get(question._id) ?? "";
+    if (question.required && answer.length === 0) {
+      throw new ConvexError(`Answer "${question.prompt}" to continue.`);
+    }
+    if (
+      answer.length > 0 &&
+      question.kind === "choice" &&
+      !question.options.includes(answer)
+    ) {
+      throw new ConvexError(
+        `"${answer}" is not one of the options for "${question.prompt}".`,
+      );
+    }
+  }
+
+  const now = Date.now();
+  let saved = 0;
+  for (const [questionId, answer] of supplied) {
+    // Silently ignore an answer to a question that has since been retired,
+    // rather than failing the whole submission over it.
+    if (!byId.has(questionId)) continue;
+    if (answer.length === 0) continue;
+
+    const prior = await ctx.db
+      .query("questionAnswers")
+      .withIndex("by_question_email", (q) =>
+        q.eq("questionId", questionId).eq("email", email),
+      )
+      .first();
+    if (prior) {
+      await ctx.db.patch(prior._id, { answer, createdAt: now });
+    } else {
+      await ctx.db.insert("questionAnswers", {
+        questionId,
+        email,
+        scope,
+        answer,
+        createdAt: now,
+      });
+    }
+    saved += 1;
+  }
+
+  return { saved };
+}
+
+const answersArg = v.array(
+  v.object({ questionId: v.id("questions"), answer: v.string() }),
+);
+
 export const answerVerificationQuestions = mutation({
-  args: {
-    answers: v.array(
-      v.object({ questionId: v.id("questions"), answer: v.string() }),
-    ),
-  },
+  args: { answers: answersArg },
   handler: async (ctx, args) => {
     const email = await requireEmail(ctx);
-
-    const live = await ctx.db
-      .query("questions")
-      .withIndex("by_scope", (q) =>
-        q.eq("scope", "verification").eq("active", true),
-      )
-      .collect();
-    const byId = new Map(live.map((row) => [row._id, row]));
-    const supplied = new Map(
-      args.answers.map((a) => [a.questionId, a.answer.trim()]),
-    );
-
-    for (const question of live) {
-      const answer = supplied.get(question._id) ?? "";
-      if (question.required && answer.length === 0) {
-        throw new ConvexError(`Answer "${question.prompt}" to continue.`);
-      }
-      if (
-        answer.length > 0 &&
-        question.kind === "choice" &&
-        !question.options.includes(answer)
-      ) {
-        throw new ConvexError(
-          `"${answer}" is not one of the options for "${question.prompt}".`,
-        );
-      }
-    }
-
-    const now = Date.now();
-    let saved = 0;
-    for (const [questionId, answer] of supplied) {
-      // Silently ignore an answer to a question that has since been retired,
-      // rather than failing the whole submission over it.
-      if (!byId.has(questionId)) continue;
-      if (answer.length === 0) continue;
-
-      const prior = await ctx.db
-        .query("questionAnswers")
-        .withIndex("by_question_email", (q) =>
-          q.eq("questionId", questionId).eq("email", email),
-        )
-        .first();
-      if (prior) {
-        await ctx.db.patch(prior._id, { answer, createdAt: now });
-      } else {
-        await ctx.db.insert("questionAnswers", {
-          questionId,
-          email,
-          scope: "verification",
-          answer,
-          createdAt: now,
-        });
-      }
-      saved += 1;
-    }
-
-    return { saved };
+    return saveScopedAnswers(ctx, "verification", email, args.answers);
   },
 });
 
+/* ------------------------------------------------------------------ */
+/* The member details form                                            */
+/* ------------------------------------------------------------------ */
+
 /**
- * A member's own verification answers, so the form can show what they already
- * submitted rather than asking again from blank.
+ * The extra questions an admin has added to the member details form.
+ *
+ * Public, like `verificationQuestions`: it returns prompts and options, no
+ * answers, and the form has to render before there is a profile to gate on.
  */
+export const profileQuestions = query({
+  args: {},
+  handler: async (ctx) => {
+    const rows = await ctx.db
+      .query("questions")
+      .withIndex("by_scope", (q) => q.eq("scope", "profile").eq("active", true))
+      .collect();
+    return rows.sort((a, b) => a.order - b.order).map(questionView);
+  },
+});
+
+/** Every profile question including the retired ones, for the console. */
+export const allProfileQuestions = query({
+  args: {},
+  handler: async (ctx) => {
+    try {
+      await requireRole(ctx, ["admin"]);
+    } catch {
+      // The panel renders an access notice rather than crashing.
+      return [];
+    }
+    const rows = await ctx.db
+      .query("questions")
+      .filter((q) => q.eq(q.field("scope"), "profile"))
+      .collect();
+    return rows.sort((a, b) => a.order - b.order).map(questionView);
+  },
+});
+
+export const answerProfileQuestions = mutation({
+  args: { answers: answersArg },
+  handler: async (ctx, args) => {
+    const email = await requireEmail(ctx);
+    return saveScopedAnswers(ctx, "profile", email, args.answers);
+  },
+});
+
+/** A member's own answers, so the details form reopens filled in. */
+export const myProfileAnswers = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity?.email) return [];
+    const email = normalise(identity.email);
+
+    const rows = await ctx.db
+      .query("questionAnswers")
+      .withIndex("by_email_scope", (q) =>
+        q.eq("email", email).eq("scope", "profile"),
+      )
+      .collect();
+    return rows.map((row) => ({
+      questionId: row.questionId,
+      answer: row.answer,
+      createdAt: row.createdAt,
+    }));
+  },
+});
+
 export const myVerificationAnswers = query({
   args: {},
   handler: async (ctx) => {

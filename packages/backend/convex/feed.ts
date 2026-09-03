@@ -40,6 +40,41 @@ const MAX_COMMENT = 1500;
 const PAGE = 30;
 const MAX_POLL_OPTIONS = 6;
 const MIN_POLL_OPTIONS = 2;
+const MAX_IMAGES = 4;
+const MAX_VIDEOS = 1;
+const MAX_URL = 600;
+/** A share can carry a note, or nothing at all. */
+const MAX_SHARE_NOTE = 600;
+
+/**
+ * Cleans a list of media addresses.
+ *
+ * HTTPS ONLY, and that is not pedantry: the portal is served over HTTPS, so an
+ * http:// image is a mixed-content block in every browser — it would simply not
+ * appear, and the member who posted it would have no idea why.
+ */
+function cleanUrls(raw: string[] | undefined, max: number, what: string) {
+  const out: string[] = [];
+  for (const value of raw ?? []) {
+    const url = value.trim();
+    if (url.length === 0) continue;
+    if (!/^https:\/\/\S+$/i.test(url)) {
+      throw new ConvexError(
+        `Each ${what} needs a full address starting with https://.`,
+      );
+    }
+    if (url.length > MAX_URL) {
+      throw new ConvexError(`That ${what} address is too long.`);
+    }
+    if (!out.includes(url)) out.push(url);
+  }
+  if (out.length > max) {
+    throw new ConvexError(
+      `A post takes at most ${max} ${what}${max === 1 ? "" : "s"}.`,
+    );
+  }
+  return out;
+}
 
 /* ------------------------------------------------------------------ */
 /* Author card                                                        */
@@ -65,12 +100,49 @@ function authorCard(email: string, profile: Doc<"alumni"> | undefined) {
  * read per poll. A feed of 30 posts is a bounded number of reads rather than a
  * cascade, which is why this is a helper and not a per-post query.
  */
+/** The quoted post inside a share. Enough to recognise it, and no more. */
+function quotedView(
+  post: Doc<"posts">,
+  profiles: Awaited<ReturnType<typeof profileIndex>>,
+) {
+  return {
+    _id: post._id,
+    body: post.body,
+    imageUrls: post.imageUrls,
+    videoUrls: post.videoUrls ?? [],
+    createdAt: post.createdAt,
+    author: authorCard(
+      post.authorEmail,
+      profiles.byEmail.get(normalise(post.authorEmail)),
+    ),
+  };
+}
+
 async function decorate(
   ctx: QueryCtx,
   rows: Doc<"posts">[],
   me: string | null,
 ) {
   const profiles = await profileIndex(ctx);
+
+  /*
+   * The quoted originals, fetched once for the whole page rather than once per
+   * card. Ten shares of the same post are one read, not ten.
+   */
+  const quotedIds = [
+    ...new Set(
+      rows
+        .map((post) => post.sharedFromId)
+        .filter((id): id is Id<"posts"> => id !== undefined),
+    ),
+  ];
+  const quoted = new Map<string, ReturnType<typeof quotedView>>();
+  for (const id of quotedIds) {
+    const original = await ctx.db.get(id);
+    // A share whose original was deleted keeps its own note and says so on the
+    // card; it is not dropped from the feed.
+    if (original) quoted.set(id, quotedView(original, profiles));
+  }
 
   return Promise.all(
     rows.map(async (post) => {
@@ -134,8 +206,16 @@ async function decorate(
         body: post.body,
         kind: post.kind,
         imageUrls: post.imageUrls,
+        videoUrls: post.videoUrls ?? [],
         likeCount: post.likeCount,
         commentCount: post.commentCount,
+        shareCount: post.shareCount ?? 0,
+        sharedFrom: post.sharedFromId
+          ? (quoted.get(post.sharedFromId) ?? null)
+          : null,
+        /** True when this is a share whose original has since been deleted. */
+        sharedFromMissing:
+          post.sharedFromId !== undefined && !quoted.has(post.sharedFromId),
         createdAt: post.createdAt,
         editedAt: post.editedAt ?? null,
         hidden: post.hidden,
@@ -170,6 +250,10 @@ export const createPost = mutation({
     body: v.string(),
     /** Present makes this a poll. Between 2 and 6 options. */
     pollOptions: v.optional(v.array(v.string())),
+    /** Up to four images, as https addresses. */
+    imageUrls: v.optional(v.array(v.string())),
+    /** One video: a direct file, or a YouTube or Vimeo link. */
+    videoUrls: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const { email } = await requireMember(ctx);
@@ -222,15 +306,20 @@ export const createPost = mutation({
       }
     }
 
+    const imageUrls = cleanUrls(args.imageUrls, MAX_IMAGES, "image");
+    const videoUrls = cleanUrls(args.videoUrls, MAX_VIDEOS, "video");
+
     const now = Date.now();
     const postId = await ctx.db.insert("posts", {
       authorEmail: email,
       communityId: args.communityId,
       body,
       kind: options ? "poll" : "text",
-      imageUrls: [],
+      imageUrls,
+      videoUrls: videoUrls.length > 0 ? videoUrls : undefined,
       likeCount: 0,
       commentCount: 0,
+      shareCount: 0,
       hidden: false,
       createdAt: now,
     });
@@ -422,6 +511,75 @@ export const toggleLike = mutation({
   },
 });
 
+/**
+ * Shares a post into the general feed, with an optional note.
+ *
+ * A SHARE IS A POST. It appears in the feed on its own, carries its own note,
+ * its own likes and its own comments, and can be deleted without touching the
+ * original — which is what members expect from every network they already use.
+ * The alternative, a counter on the original, cannot hold the sentence someone
+ * wanted to add, and that sentence is usually the reason they shared it.
+ *
+ * DEPTH IS ALWAYS ONE. Sharing a share quotes the original instead of the
+ * share, so the feed never renders a quote inside a quote inside a quote, and
+ * `shareCount` on the original counts every share of it however it was reached.
+ *
+ * A share always lands in the GENERAL feed, never inside a community, because a
+ * community's posts are readable by its members only — copying one into a feed
+ * every member can read would route around that in one click.
+ */
+export const sharePost = mutation({
+  args: { postId: v.id("posts"), note: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    const { email } = await requireMember(ctx);
+
+    const original = await ctx.db.get(args.postId);
+    if (!original) throw new ConvexError("That post no longer exists.");
+    if (original.hidden && normalise(original.authorEmail) !== email) {
+      throw new ConvexError("That post has been hidden by a moderator.");
+    }
+
+    // Flattened: quote what the share quotes, not the share.
+    const rootId = original.sharedFromId ?? original._id;
+    const root = rootId === original._id ? original : await ctx.db.get(rootId);
+    if (!root) throw new ConvexError("The original post no longer exists.");
+
+    if (root.communityId !== undefined) {
+      throw new ConvexError(
+        "Posts inside a community stay in that community. Share it there instead.",
+      );
+    }
+    if (normalise(root.authorEmail) === email && root.sharedFromId === undefined) {
+      // Sharing your own post to the same feed it is already in adds nothing
+      // but a duplicate. Said plainly rather than silently allowed.
+      throw new ConvexError("This is already your post in this feed.");
+    }
+
+    const note = (args.note ?? "").trim();
+    if (note.length > MAX_SHARE_NOTE) {
+      throw new ConvexError(`Keep the note under ${MAX_SHARE_NOTE} characters.`);
+    }
+
+    const now = Date.now();
+    const postId = await ctx.db.insert("posts", {
+      authorEmail: email,
+      body: note,
+      kind: "text",
+      imageUrls: [],
+      likeCount: 0,
+      commentCount: 0,
+      shareCount: 0,
+      sharedFromId: rootId,
+      hidden: false,
+      createdAt: now,
+    });
+
+    await ctx.db.patch(rootId, { shareCount: (root.shareCount ?? 0) + 1 });
+
+    return { postId };
+  },
+});
+
 export const addComment = mutation({
   args: { postId: v.id("posts"), body: v.string() },
   handler: async (ctx, args) => {
@@ -556,7 +714,19 @@ async function assertCanRead(
 export const generalFeed = query({
   args: { limit: v.optional(v.number()) },
   handler: async (ctx, args) => {
-    const { email } = await requireMember(ctx);
+    /*
+     * REFUSES SOFTLY, and this one matters more than most. A member who has
+     * just signed in resolves to `guest` until the office verifies them by
+     * hand, and this feed is the first page they land on — so throwing here
+     * took the whole route down for precisely the people arriving at it. The
+     * page reads `authorized` and shows them what to do next instead.
+     */
+    let email: string;
+    try {
+      email = (await requireMember(ctx)).email;
+    } catch {
+      return { authorized: false as const, posts: [] };
+    }
     const limit = Math.min(Math.max(args.limit ?? PAGE, 1), 100);
 
     /*
@@ -575,7 +745,7 @@ export const generalFeed = query({
       .filter((post) => !post.hidden || normalise(post.authorEmail) === email)
       .slice(0, limit);
 
-    return { posts: await decorate(ctx, rows, email) };
+    return { authorized: true as const, posts: await decorate(ctx, rows, email) };
   },
 });
 
@@ -652,10 +822,22 @@ export const commentsFor = query({
 export const feedStats = query({
   args: {},
   handler: async (ctx) => {
-    await requireMember(ctx);
+    try {
+      await requireMember(ctx);
+    } catch {
+      // Same reason as generalFeed: the rail must not crash the page.
+      return {
+        authorized: false as const,
+        generalPosts: 0,
+        communityPosts: 0,
+        polls: 0,
+        contributors: 0,
+      };
+    }
     const posts = await ctx.db.query("posts").collect();
     const general = posts.filter((post) => post.communityId === undefined);
     return {
+      authorized: true as const,
       generalPosts: general.length,
       communityPosts: posts.length - general.length,
       polls: posts.filter((post) => post.kind === "poll").length,

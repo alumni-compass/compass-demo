@@ -2,7 +2,10 @@ import type { Metadata, Viewport } from "next";
 
 import "../index.css";
 
+import ChromeSlot from "@/components/chrome-slot";
+import LocationSentinel from "@/components/location-sentinel";
 import Providers from "@/components/providers";
+import SessionOnly from "@/components/session-only";
 import SiteFooter from "@/components/site-footer";
 import SiteHeader from "@/components/site-header";
 import { getToken } from "@/lib/auth-server";
@@ -42,6 +45,11 @@ export default async function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
         <Providers initialToken={token}>
+          {/* Refreshes a consenting member's location once per sign-in, and
+              does nothing at all otherwise — see location-sentinel.tsx. */}
+          <SessionOnly>
+            <LocationSentinel />
+          </SessionOnly>
           <a
             href="#main"
             className="font-mono sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[60] focus:bg-ink focus:px-4 focus:py-2 focus:text-[0.75rem] focus:uppercase focus:tracking-[0.12em] focus:text-bone"
@@ -49,11 +57,17 @@ export default async function RootLayout({
             Skip to content
           </a>
           <div className="flex min-h-svh flex-col">
-            <SiteHeader />
+            {/* /join is its own full-viewport screen until a session
+                exists — see chrome-slot.tsx. */}
+            <ChromeSlot>
+              <SiteHeader />
+            </ChromeSlot>
             <main id="main" className="flex-1">
               {children}
             </main>
-            <SiteFooter />
+            <ChromeSlot>
+              <SiteFooter />
+            </ChromeSlot>
           </div>
         </Providers>
       </body>

@@ -239,6 +239,8 @@ export default function SiteHeader() {
 
         <div className="ml-auto flex items-center gap-2 xl:ml-3">
           <Unauthenticated>
+            {/* One door. /join is the sign-in screen until there is a session,
+                so this is where both a new member and a returning one go. */}
             <Link
               href="/join"
               className="font-mono hidden min-h-11 items-center rounded-control bg-maroon px-4 text-[0.7rem] uppercase tracking-[0.12em] text-bone shadow-panel transition-colors hover:bg-maroon-deep sm:inline-flex"

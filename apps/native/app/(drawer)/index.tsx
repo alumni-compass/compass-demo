@@ -5,7 +5,6 @@ import { Text, View } from "react-native";
 
 import { Container } from "@/components/container";
 import { SignIn } from "@/components/sign-in";
-import { SignUp } from "@/components/sign-up";
 import { authClient } from "@/lib/auth-client";
 
 export default function Home() {
@@ -64,7 +63,6 @@ export default function Home() {
       {!user && (
         <View className="mt-5 gap-4">
           <SignIn />
-          <SignUp />
         </View>
       )}
     </Container>

@@ -1,3 +1,5 @@
+import type { Auth } from "convex/server";
+
 import type { QueryCtx, MutationCtx } from "./_generated/server";
 
 /**
@@ -19,6 +21,24 @@ type AnyCtx = QueryCtx | MutationCtx;
 
 /** Throws unless the caller has a session. Returns the verified identity. */
 export async function requireIdentity(ctx: AnyCtx) {
+  const identity = await ctx.auth.getUserIdentity();
+  if (!identity) {
+    throw new Error("Sign in to continue.");
+  }
+  return identity;
+}
+
+/**
+ * The same check, for an action.
+ *
+ * An action carries the caller's verified identity and no `db` at all, so it
+ * cannot satisfy `AnyCtx`. This is a second function rather than a widening of
+ * `requireIdentity`, because `chat.ts` types its own helper as
+ * `Parameters<typeof requireIdentity>[0]` — widening that signature silently
+ * strips `runQuery` from it and breaks a module that has nothing to do with
+ * actions.
+ */
+export async function requireActionIdentity(ctx: { auth: Auth }) {
   const identity = await ctx.auth.getUserIdentity();
   if (!identity) {
     throw new Error("Sign in to continue.");

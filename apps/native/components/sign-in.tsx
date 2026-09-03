@@ -1,176 +1,136 @@
 /*
- * HEADS UP — this form no longer works against the shared Convex backend.
+ * Sign-in for the Expo app — the same two providers as the web portal.
  *
- * `packages/backend/convex/auth.ts` no longer registers a password strategy at
- * all: web sign-in is Google and LinkedIn only. `authClient.signIn.email` /
- * `signUp.email` therefore fail here, and the toast below is what the member sees.
+ * WHAT THIS REPLACED. Two forms, one for email-and-password sign-in and one for
+ * sign-up, both calling `authClient.signIn.email` / `signUp.email`. The shared
+ * backend registers no password strategy at all — the deployment answers
+ * EMAIL_PASSWORD_DISABLED and EMAIL_PASSWORD_SIGN_UP_DISABLED to those two
+ * routes — so both forms could only ever fail. They are gone rather than left
+ * behind a warning, and there is no separate sign-up component any more because
+ * with OAuth the same button does both.
  *
- * The Expo app is still the Better-T-Stack scaffold and was out of scope for that
- * change, so nothing here was rewritten rather than half-rewritten. Porting it
- * means `@better-auth/expo` + `expo-web-browser` for the OAuth round trip, and
- * registering the native redirect with both providers.
+ * WHAT STILL HAS TO HAPPEN BEFORE THIS WORKS ON A DEVICE, stated plainly rather
+ * than implied by a button that fails: the OAuth round trip leaves the app and
+ * comes back through the `RIT-ALUMINI://` scheme (`app.json`), which Convex
+ * already trusts via `NATIVE_APP_URL` in `convex/auth.ts`. Google and LinkedIn
+ * must each also have that native redirect registered on their console beside
+ * the web one, or the provider refuses the request. Until then the button
+ * reports the provider's refusal instead of pretending to sign anyone in.
+ *
+ * `@better-auth/expo` (wired in `lib/auth-client.ts`) is what opens the system
+ * browser and stores the session in SecureStore; `expo-web-browser` is already
+ * a dependency, so nothing further is needed here.
  */
-import { useForm } from "@tanstack/react-form";
-import {
-  Button,
-  FieldError,
-  Input,
-  Label,
-  Spinner,
-  Surface,
-  TextField,
-  useToast,
-} from "heroui-native";
-import { useRef } from "react";
-import { Text, TextInput, View } from "react-native";
-import z from "zod";
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
+import { Button, Spinner, Surface, useToast } from "heroui-native";
+import { useState } from "react";
+import { Text, View } from "react-native";
 
 import { authClient } from "@/lib/auth-client";
 
-const signInSchema = z.object({
-  email: z.string().trim().min(1, "Email is required").email("Enter a valid email address"),
-  password: z.string().min(1, "Password is required").min(8, "Use at least 8 characters"),
-});
+type ProviderId = "google" | "linkedin";
 
-function getErrorMessage(error: unknown): string | null {
-  if (!error) return null;
+const PROVIDERS = [
+  {
+    id: "google",
+    name: "Google",
+    label: "Continue with Google",
+    brings: "Confirms your name and email address.",
+  },
+  {
+    id: "linkedin",
+    name: "LinkedIn",
+    label: "Continue with LinkedIn",
+    brings: "Confirms your name, address and current employer.",
+  },
+] as const satisfies ReadonlyArray<{
+  id: ProviderId;
+  name: string;
+  label: string;
+  brings: string;
+}>;
 
-  if (typeof error === "string") {
-    return error;
-  }
-
-  if (Array.isArray(error)) {
-    for (const issue of error) {
-      const message = getErrorMessage(issue);
-      if (message) {
-        return message;
-      }
-    }
-    return null;
-  }
-
-  if (typeof error === "object" && error !== null) {
-    const maybeError = error as { message?: unknown };
-    if (typeof maybeError.message === "string") {
-      return maybeError.message;
-    }
-  }
-
-  return null;
+function messageFrom(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "string" && error) return error;
+  return fallback;
 }
 
 export function SignIn() {
-  const passwordInputRef = useRef<TextInput>(null);
   const { toast } = useToast();
+  /** Which providers this deployment actually holds credentials for. */
+  const methods = useQuery(api.auth.configuredAuthMethods);
+  const [pending, setPending] = useState<ProviderId | null>(null);
 
-  const form = useForm({
-    defaultValues: {
-      email: "",
-      password: "",
-    },
-    validators: {
-      onSubmit: signInSchema,
-    },
-    onSubmit: async ({ value, formApi }) => {
-      await authClient.signIn.email(
-        {
-          email: value.email.trim(),
-          password: value.password,
-        },
-        {
-          onError(error) {
-            toast.show({
-              variant: "danger",
-              label: error.error?.message || "Failed to sign in",
-            });
-          },
-          onSuccess() {
-            formApi.reset();
-            toast.show({
-              variant: "success",
-              label: "Signed in successfully",
-            });
-          },
-        },
-      );
-    },
-  });
+  async function signInWith(provider: ProviderId) {
+    setPending(provider);
+    try {
+      // Better Auth returns a refusal as a value rather than throwing, so both
+      // shapes have to be handled or a rejected sign-in says nothing at all.
+      const result = await authClient.signIn.social({ provider, callbackURL: "/" });
+      if (result?.error) {
+        toast.show({
+          variant: "danger",
+          label: result.error.message || "That provider refused the sign-in.",
+        });
+      }
+    } catch (error) {
+      toast.show({
+        variant: "danger",
+        label: messageFrom(error, "Could not reach the sign-in service."),
+      });
+    } finally {
+      setPending(null);
+    }
+  }
+
+  const checking = methods === undefined;
+  const anyConfigured = methods?.anyConfigured === true;
 
   return (
-    <Surface variant="secondary" className="p-4 rounded-lg">
-      <Text className="text-foreground font-medium mb-4">Sign In</Text>
+    <Surface variant="secondary" className="p-4 rounded-xl">
+      <Text className="text-foreground font-medium">Sign in</Text>
+      <Text className="text-muted text-xs mt-1">
+        The same button signs you in and creates your account. There is no
+        password — Google and LinkedIn are the only two ways in.
+      </Text>
 
-      <form.Subscribe
-        selector={(state) => ({
-          isSubmitting: state.isSubmitting,
-          validationError: getErrorMessage(state.errorMap.onSubmit),
-        })}
-      >
-        {({ isSubmitting, validationError }) => {
-          const formError = validationError;
-
+      <View className="gap-3 mt-4">
+        {PROVIDERS.map((provider) => {
+          const live = methods?.[provider.id] === true;
           return (
-            <>
-              <FieldError isInvalid={!!formError} className="mb-3">
-                {formError}
-              </FieldError>
-
-              <View className="gap-3">
-                <form.Field name="email">
-                  {(field) => (
-                    <TextField>
-                      <Label>Email</Label>
-                      <Input
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChangeText={field.handleChange}
-                        placeholder="email@example.com"
-                        keyboardType="email-address"
-                        autoCapitalize="none"
-                        autoComplete="email"
-                        textContentType="emailAddress"
-                        returnKeyType="next"
-                        blurOnSubmit={false}
-                        onSubmitEditing={() => {
-                          passwordInputRef.current?.focus();
-                        }}
-                      />
-                    </TextField>
-                  )}
-                </form.Field>
-
-                <form.Field name="password">
-                  {(field) => (
-                    <TextField>
-                      <Label>Password</Label>
-                      <Input
-                        ref={passwordInputRef}
-                        value={field.state.value}
-                        onBlur={field.handleBlur}
-                        onChangeText={field.handleChange}
-                        placeholder="••••••••"
-                        secureTextEntry
-                        autoComplete="password"
-                        textContentType="password"
-                        returnKeyType="go"
-                        onSubmitEditing={form.handleSubmit}
-                      />
-                    </TextField>
-                  )}
-                </form.Field>
-
-                <Button onPress={form.handleSubmit} isDisabled={isSubmitting} className="mt-1">
-                  {isSubmitting ? (
-                    <Spinner size="sm" color="default" />
-                  ) : (
-                    <Button.Label>Sign In</Button.Label>
-                  )}
-                </Button>
-              </View>
-            </>
+            <View key={provider.id}>
+              <Button
+                onPress={() => {
+                  void signInWith(provider.id);
+                }}
+                isDisabled={!live || pending !== null}
+              >
+                {pending === provider.id ? (
+                  <Spinner size="sm" color="default" />
+                ) : (
+                  <Button.Label>{provider.label}</Button.Label>
+                )}
+              </Button>
+              <Text className="text-muted text-xs mt-1">
+                {checking
+                  ? "Checking this deployment."
+                  : live
+                    ? provider.brings
+                    : `${provider.name} switches on once the association adds its credentials.`}
+              </Text>
+            </View>
           );
-        }}
-      </form.Subscribe>
+        })}
+      </View>
+
+      {!checking && !anyConfigured ? (
+        <Text className="text-danger text-xs mt-3">
+          Neither provider has credentials on this deployment, so nobody can sign
+          in at the moment — including the association.
+        </Text>
+      ) : null}
     </Surface>
   );
 }

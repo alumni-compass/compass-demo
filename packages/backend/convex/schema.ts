@@ -345,6 +345,8 @@ export default defineSchema({
       v.literal("verification"),
       v.literal("communityJoin"),
       v.literal("poll"),
+      /** Asked on the member details form, after the fixed fields. */
+      v.literal("profile"),
     ),
     communityId: v.optional(v.id("communities")),
     postId: v.optional(v.id("posts")),
@@ -381,6 +383,7 @@ export default defineSchema({
       v.literal("verification"),
       v.literal("communityJoin"),
       v.literal("poll"),
+      v.literal("profile"),
     ),
     communityId: v.optional(v.id("communities")),
     postId: v.optional(v.id("posts")),
@@ -412,9 +415,35 @@ export default defineSchema({
     body: v.string(),
     kind: v.union(v.literal("text"), v.literal("poll")),
     imageUrls: v.array(v.string()),
+    /**
+     * Video, as URLs: a direct file, or a YouTube or Vimeo link the client
+     * turns into an embed. Optional because every row predates the field.
+     *
+     * NOT UPLOADS. Nothing in this portal stores a video file — an association
+     * recap is already on YouTube and a phone clip is already somewhere with a
+     * URL, so this holds the address and the browser plays it. Adding upload
+     * means Convex file storage, a size budget and a moderation queue for
+     * bytes, none of which anyone has asked for.
+     */
+    videoUrls: v.optional(v.array(v.string())),
     /** Denormalised, so a feed of 50 posts is not 100 extra reads. */
     likeCount: v.number(),
     commentCount: v.number(),
+    /**
+     * How many times this post has been shared. Optional for the same reason
+     * as `videoUrls`: the rows that predate sharing have no value to migrate,
+     * and absent reads as zero.
+     */
+    shareCount: v.optional(v.number()),
+    /**
+     * Set when this post quotes another one — the share.
+     *
+     * A share is a post, not a join-table row, because it carries its own note
+     * and its own comments and belongs in the feed on its own merits. Chains
+     * are flattened in `feed.sharePost`: sharing a share quotes the original,
+     * so the depth is always one and the feed never renders a matryoshka.
+     */
+    sharedFromId: v.optional(v.id("posts")),
     /** Moderation: hidden posts stay readable to their author and to admins. */
     hidden: v.boolean(),
     hiddenReason: v.optional(v.string()),
@@ -441,18 +470,122 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_post", ["postId", "createdAt"]),
 
+
+  /* ================================================================== */
+  /* The member details form                                             */
+  /* ================================================================== */
+
+  /**
+   * One row of the member details form, as the admin has configured it.
+   *
+   * WHY A CONFIG TABLE AND NOT ELEVEN MORE `questions` ROWS. The answers to
+   * these eleven live in typed columns on `alumni`, because the portal reads
+   * them: the directory filters on batch and department, the search index
+   * covers company, mentorship reads the designation. An answer sitting in
+   * `questionAnswers` as a string could not be indexed or filtered, so the
+   * directory would stop working. What the admin actually needs to change is
+   * the *presentation* — the label, the help text, whether it is required,
+   * the order, and for the two dropdowns the list of options — and that is
+   * exactly what this table holds. Anything genuinely new the admin wants to
+   * ask goes in `questions` with scope `profile`, which has no such
+   * constraint.
+   *
+   * `key` is the immutable join to the column on `alumni`. It is never
+   * editable, because renaming it would silently orphan every answer.
+   *
+   * `locked` marks the fields the portal cannot work without — the two name
+   * parts and the address the provider confirmed. Those can be relabelled but
+   * not retired and not made optional; `profileFields.ts` enforces that on the
+   * server, not just in the console.
+   */
+  profileFields: defineTable({
+    key: v.string(),
+    label: v.string(),
+    help: v.optional(v.string()),
+    /**
+     * How the control behaves. Fixed per field, not admin-editable: a phone
+     * number rendered as a dropdown, or a company rendered as a plain box with
+     * no suggestions, is a worse form, not a configurable one.
+     */
+    kind: v.union(
+      v.literal("text"),
+      v.literal("email"),
+      v.literal("phone"),
+      v.literal("longText"),
+      /** Admin-supplied options, and only those. */
+      v.literal("select"),
+      /** Live suggestions from a worldwide source, free text still accepted. */
+      v.literal("company"),
+      v.literal("position"),
+      /** Detected from the browser with consent, editable by hand. */
+      v.literal("location"),
+    ),
+    /** Meaningful for `select`. Admin-editable, and validated against on save. */
+    options: v.array(v.string()),
+    required: v.boolean(),
+    active: v.boolean(),
+    order: v.number(),
+    locked: v.boolean(),
+    updatedAt: v.number(),
+    updatedByEmail: v.optional(v.string()),
+  })
+    .index("by_key", ["key"])
+    .index("by_order", ["order"]),
+
   /** Module 2 + 3 — alumni profiles and the searchable directory. */
   alumni: defineTable({
     userId: v.optional(v.string()),
     name: v.string(),
     email: v.string(),
     phone: v.optional(v.string()),
+    /**
+     * The two name parts, asked separately by the onboarding form.
+     *
+     * `name` stays as the single display string every other module already
+     * reads, and is kept as `firstName + lastName` whenever both are known.
+     * Storing all three is redundant on paper and correct in practice: a member
+     * whose profile predates the split has only `name`, and a name is not
+     * reliably splittable on a space.
+     */
+    firstName: v.optional(v.string()),
+    lastName: v.optional(v.string()),
     /** Graduating batch year, e.g. 2021. Doubles as the batch-rail key. */
     batch: v.number(),
     department: v.string(),
     designation: v.string(),
     company: v.string(),
     region: v.string(),
+    /**
+     * Where the member is now, in words: "Rajapalayam, Tamil Nadu, India".
+     *
+     * Distinct from `region`, which is one of nine coarse buckets the directory
+     * filters on. This is the precise place, and it is what the browser detects
+     * on sign-in when the member has consented; `region` is derived from it.
+     *
+     * WHICH COORDINATES ARE STORED, AND WHICH ARE NOT. The browser's own fix is
+     * discarded inside the Convex action that receives it. What is kept below is
+     * the centroid of the NAMED PLACE — the point Nominatim returns for
+     * "Rajapalayam", not the point the device reported. That is what lets the
+     * map plot a member at all, and it discloses nothing the label above does
+     * not already say: everyone in the town shares one coordinate pair. A
+     * device-precision trail is a movement history, and there still is not one
+     * anywhere in this schema.
+     */
+    location: v.optional(v.string()),
+    /** Centroid of `location`, as [lat, lng]. Town-level, never device-level. */
+    locationLat: v.optional(v.number()),
+    locationLng: v.optional(v.number()),
+    /** Opt-in. False or absent means the browser is never asked for a fix. */
+    locationConsent: v.optional(v.boolean()),
+    locationUpdatedAt: v.optional(v.number()),
+    /** `device` came from a consented browser fix; `manual` was typed. */
+    locationSource: v.optional(v.union(v.literal("device"), v.literal("manual"))),
+    /** Postal address. Never returned by directory.publicView. */
+    address: v.optional(v.string()),
+    /** The employer's primary domain, when the suggestion carried one. */
+    companyDomain: v.optional(v.string()),
+    /** Where they work — the office or city, not the same as `location`. */
+    workLocation: v.optional(v.string()),
     skills: v.array(v.string()),
     industries: v.array(v.string()),
     bio: v.optional(v.string()),

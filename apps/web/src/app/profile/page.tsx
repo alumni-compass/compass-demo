@@ -10,6 +10,8 @@ import {
 } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
+
+import ConnectedAccounts from "@/components/connected-accounts";
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -521,6 +523,23 @@ function ProfileEditor({
   const upsertProfile = useMutation(api.profiles.upsertProfile);
   const setFieldVisibility = useMutation(api.profiles.setFieldVisibility);
 
+  /**
+   * The batch and department option lists, as the association configured them.
+   *
+   * `profileFields.list` is the same source the details form reads and the same
+   * one `upsertProfile` validates against, so this select cannot offer a batch
+   * the server would refuse. The local constants remain as the fallback for the
+   * moment before the query resolves and for a deployment where no admin has
+   * saved a configuration yet.
+   */
+  const fieldConfig = useQuery(api.profileFields.list);
+  const configuredOptions = (key: string, fallback: readonly (string | number)[]) => {
+    const field = fieldConfig?.fields.find((entry) => entry.key === key);
+    return field && field.options.length > 0
+      ? field.options
+      : fallback.map((value) => String(value));
+  };
+
   /* ---- Form state. Seeded once from the record, then owned here. ------ */
   const [name, setName] = useState(saved?.name ?? "");
   const [phone, setPhone] = useState(saved?.phone ?? "");
@@ -728,6 +747,11 @@ function ProfileEditor({
           </div>
         </div>
 
+        {/* ---- Both providers on one account --------------------------- */}
+        <div className="mb-10 border border-line bg-white p-5">
+          <ConnectedAccounts callbackURL="/profile" />
+        </div>
+
         <div className="grid gap-12 lg:grid-cols-[1.45fr_1fr] lg:items-start lg:gap-16">
           {/* ---- The form ---------------------------------------------- */}
           <form onSubmit={handleSubmit} noValidate className="space-y-12">
@@ -759,7 +783,7 @@ function ProfileEditor({
                     className={SELECT}
                   >
                     <option value="">Select your batch</option>
-                    {BATCH_OPTIONS.map((year) => (
+                    {configuredOptions("batch", BATCH_OPTIONS).map((year) => (
                       <option key={year} value={year}>
                         {year}
                       </option>
@@ -785,9 +809,9 @@ function ProfileEditor({
                     className={SELECT}
                   >
                     <option value="">Select your department</option>
-                    {DEPARTMENTS.map((code) => (
+                    {configuredOptions("department", DEPARTMENTS).map((code) => (
                       <option key={code} value={code}>
-                        {code} — {DEPARTMENT_NAMES[code]}
+                        {DEPARTMENT_NAMES[code] ? `${code} — ${DEPARTMENT_NAMES[code]}` : code}
                       </option>
                     ))}
                   </select>

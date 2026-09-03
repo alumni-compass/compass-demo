@@ -4,8 +4,8 @@ import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
 import { useQuery } from "convex/react";
 import { useState, type ReactNode } from "react";
 
+import DetailsFormAdmin from "@/components/details-form-admin";
 import RosterImport from "@/components/roster-import";
-import VerificationQuestions from "@/components/verification-questions";
 import {
   Button,
   Card,
@@ -802,17 +802,20 @@ npx convex env set LINKEDIN_CLIENT_SECRET  …`}
         </section>
       </Shell>
 
-      {/* ---- Verification questions -------------------------------------
-          Beside member management, because these questions are what the queue
-          there gives an admin to check. */}
-      <section className="border-t border-line bg-bone-deep">
+      {/* ---- The member details form ------------------------------------
+          The questionnaire every member fills in after signing in. This panel
+          is the whole of it: the eleven fields with their labels, help text,
+          option lists and ordering, plus any extra questions the association
+          adds. Nothing about the form is hard-coded in the member-facing
+          page — see details-form.tsx. */}
+      <section id="details-form" className="border-t border-line bg-bone-deep">
         <Shell className="py-16 sm:py-20">
           <SectionHead
-            eyebrow="Verification form"
-            title="What every applicant is asked"
-            lede="Roll number, batch, department and graduation year are fixed fields on every request. Anything else the office wants to cross-check, add here — it appears on /join and the answers arrive with the request."
+            eyebrow="Member details form"
+            title="What every member is asked after signing in"
+            lede="Name and email arrive confirmed from Google or LinkedIn. Everything else on this list is yours to configure: relabel a field, reword its help, reorder it, make it required or optional, edit the batch and department dropdowns, or add a question of your own. Changes reach members immediately — there is no deploy."
           />
-          <VerificationQuestions />
+          <DetailsFormAdmin />
         </Shell>
       </section>
 

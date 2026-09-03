@@ -126,6 +126,7 @@ export const NAV = [
  */
 export const MEMBER_NAV = [
   { href: "/feed", label: "Feed", counter: null },
+  { href: "/map", label: "Map", counter: null },
   { href: "/communities", label: "Communities", counter: "moderation" },
   { href: "/network", label: "Network", counter: "connections" },
   { href: "/messages", label: "Messages", counter: "messages" },
@@ -141,6 +142,7 @@ export const MEMBER_NAV = [
  */
 export const MEMBER_MENU = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/welcome", label: "Your details" },
   { href: "/profile", label: "Your profile" },
   { href: "/students", label: "Student database" },
   { href: "/network", label: "Your network" },
