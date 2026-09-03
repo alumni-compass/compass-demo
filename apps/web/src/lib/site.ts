@@ -149,6 +149,36 @@ export const MEMBER_MENU = [
   { href: "/messages", label: "Messages" },
 ] as const;
 
+/**
+ * The graduating year inside a batch label like "2020-2024".
+ *
+ * The admin-configured batch options are LABELS covering four years; the value
+ * stored on a profile is the single indexed year the cohort left. This is the
+ * browser half of that conversion, and it is deliberately the same rule as
+ * `profileFields.batchYear` on the server: take the LAST four-digit group, so a
+ * range resolves to its end and a bare "2024" still works for profiles saved
+ * before the labels became ranges.
+ *
+ * Every place that reads a batch option — the details form, the profile editor
+ * and the people search — calls this, so none of them can disagree about what
+ * "2020-2024" means.
+ */
+export function batchYearFromLabel(label: string): number | null {
+  const matches = label.match(/\d{4}/g);
+  if (!matches || matches.length === 0) return null;
+  const year = Number(matches[matches.length - 1]);
+  return Number.isInteger(year) ? year : null;
+}
+
+/** The label whose year matches, so a saved profile reopens on its own batch. */
+export function batchLabelForYear(
+  year: number | null | undefined,
+  options: readonly string[],
+): string {
+  if (year === null || year === undefined) return "";
+  return options.find((option) => batchYearFromLabel(option) === year) ?? "";
+}
+
 /** Formats paise-free rupee amounts the way Indian donors expect to read them. */
 export function inr(amount: number, opts?: { compact?: boolean }) {
   if (opts?.compact) {

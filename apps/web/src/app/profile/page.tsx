@@ -34,6 +34,7 @@ import {
 } from "@/components/kit";
 import {
   BATCH_YEARS,
+  batchYearFromLabel,
   DEPARTMENT_NAMES,
   DEPARTMENTS,
   REGIONS,
@@ -783,11 +784,17 @@ function ProfileEditor({
                     className={SELECT}
                   >
                     <option value="">Select your batch</option>
-                    {configuredOptions("batch", BATCH_OPTIONS).map((year) => (
-                      <option key={year} value={year}>
-                        {year}
-                      </option>
-                    ))}
+                    {configuredOptions("batch", BATCH_OPTIONS).flatMap(
+                      (option) => {
+                        const year = batchYearFromLabel(option);
+                        if (year === null) return [];
+                        return [
+                          <option key={option} value={year}>
+                            {option}
+                          </option>,
+                        ];
+                      },
+                    )}
                   </select>
                 </FormRow>
 

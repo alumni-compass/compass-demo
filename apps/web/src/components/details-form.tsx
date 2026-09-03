@@ -15,7 +15,7 @@ import {
   LoadingRows,
   Pill,
 } from "@/components/kit";
-import { RITAA } from "@/lib/site";
+import { batchLabelForYear, batchYearFromLabel, RITAA } from "@/lib/site";
 
 /**
  * The member details form — what a member fills in after signing in.
@@ -117,45 +117,95 @@ function Row({
 }
 
 /* ------------------------------------------------------------------ */
-/* The combobox                                                        */
+/* The suggestion box                                                  */
 /* ------------------------------------------------------------------ */
+
+type Suggestion = { label: string; hint?: string | null; iconUrl?: string | null };
 
 /**
  * Type-to-search over a live source, with free text always accepted.
  *
- * The suggestion list is advisory: `onChange` fires on every keystroke, so what
- * the member typed is already the value before any suggestion is picked. That
- * is what makes this safe for employer and position, where no list is complete.
+ * WHY IT IS FAST NOW. It used to call a Convex action on every surviving
+ * keystroke, and an action is a server round trip that reaches out to a third
+ * party before anything appears — typing an employer name was half a dozen
+ * trips through somebody else's endpoint. This asks a QUERY first, which rides
+ * the socket the app already holds and answers from `lookupCache` immediately.
+ * Only a genuine miss fires the action, once per distinct query, and the action
+ * writes the cache row; the query is already subscribed, so the answer arrives
+ * without asking again. Backspacing is free, and the second member to type
+ * "infos" never waits at all.
  *
- * Requests are debounced and the response is dropped if a newer keystroke has
- * been typed since it left — otherwise a slow answer for "inf" arrives after a
- * fast one for "infosys" and replaces the better list with the worse one.
+ * The list is advisory. `onChange` fires on every keystroke, so what the member
+ * typed is already the value before any suggestion is picked — which is what
+ * makes this safe for employer and job title, where no closed list is complete.
  */
-function Combobox({
+function SuggestBox({
   id,
+  kind,
   value,
   placeholder,
-  disabled,
   onChange,
-  fetchSuggestions,
 }: {
   id: string;
+  kind: "company" | "position";
   value: string;
   placeholder?: string;
-  disabled?: boolean;
   onChange: (value: string, extra?: { domain?: string | null }) => void;
-  fetchSuggestions: (
-    query: string,
-  ) => Promise<Array<{ label: string; hint?: string | null }>>;
 }) {
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [rows, setRows] = useState<Array<{ label: string; hint?: string | null }>>(
-    [],
-  );
+  const [typed, setTyped] = useState(value.trim());
   const wrap = useRef<HTMLDivElement>(null);
-  /** Incremented per request; a response with a stale token is discarded. */
-  const token = useRef(0);
+  /** One action per distinct query, however many renders it takes. */
+  const asked = useRef<Set<string>>(new Set());
+
+  const suggestCompanies = useAction(api.lookups.companies);
+  const suggestPositions = useAction(api.lookups.positions);
+
+  // Short debounce: the query below is local, so there is far less to protect
+  // against than when every keystroke went to the network.
+  useEffect(() => {
+    const timer = setTimeout(() => setTyped(value.trim()), 140);
+    return () => clearTimeout(timer);
+  }, [value]);
+
+  const query = typed.length >= 2 ? typed : "";
+  const cached = useQuery(
+    api.lookups.cached,
+    query ? { kind, query } : "skip",
+  );
+
+  useEffect(() => {
+    if (!query) return;
+    // Wait for the cache answer before deciding it is a miss.
+    if (cached === undefined) return;
+    if (cached.hit && !cached.stale) return;
+    if (asked.current.has(query)) return;
+    asked.current.add(query);
+
+    const run = kind === "company" ? suggestCompanies : suggestPositions;
+    void run({ query }).catch(() => {
+      // A dead source must not interrupt typing; the box just stays empty.
+      asked.current.delete(query);
+    });
+  }, [query, cached, kind, suggestCompanies, suggestPositions]);
+
+  const rows: Suggestion[] = (() => {
+    const raw = (cached?.rows ?? []) as Array<Record<string, unknown>>;
+    if (kind === "company") {
+      return raw.map((row) => ({
+        label: String(row.name ?? ""),
+        hint: typeof row.domain === "string" ? row.domain : null,
+        iconUrl: typeof row.logoUrl === "string" ? row.logoUrl : null,
+      }));
+    }
+    return raw.map((row) => ({ label: String(row.title ?? "") }));
+  })().filter((row) => row.label);
+
+  const waiting = Boolean(query) && cached !== undefined && !cached.hit;
+
+  useEffect(() => {
+    if (rows.length > 0 && typed.length >= 2) setOpen(true);
+  }, [rows.length, typed]);
 
   useEffect(() => {
     if (!open) return;
@@ -173,34 +223,6 @@ function Combobox({
     };
   }, [open]);
 
-  useEffect(() => {
-    const query = value.trim();
-    if (query.length < 2) {
-      setRows([]);
-      return;
-    }
-    const mine = token.current + 1;
-    token.current = mine;
-    setBusy(true);
-    const timer = setTimeout(() => {
-      fetchSuggestions(query)
-        .then((results) => {
-          if (token.current !== mine) return;
-          setRows(results);
-          if (results.length > 0) setOpen(true);
-        })
-        .catch(() => {
-          // A suggestion source that fails must not interrupt typing.
-          if (token.current === mine) setRows([]);
-        })
-        .finally(() => {
-          if (token.current === mine) setBusy(false);
-        });
-    }, 250);
-    return () => clearTimeout(timer);
-    // fetchSuggestions is a stable action reference from convex/react.
-  }, [value, fetchSuggestions]);
-
   return (
     <div className="relative" ref={wrap}>
       <input
@@ -208,7 +230,6 @@ function Combobox({
         className={CONTROL}
         value={value}
         placeholder={placeholder}
-        disabled={disabled}
         autoComplete="off"
         role="combobox"
         aria-expanded={open}
@@ -218,7 +239,7 @@ function Combobox({
           if (rows.length > 0) setOpen(true);
         }}
       />
-      {busy ? (
+      {waiting ? (
         <span className="font-mono absolute right-3 top-1/2 -translate-y-1/2 text-[0.6rem] uppercase tracking-[0.1em] text-slate-soft">
           …
         </span>
@@ -233,13 +254,36 @@ function Combobox({
             <li key={`${row.label}-${row.hint ?? ""}`} role="option" aria-selected={false}>
               <button
                 type="button"
-                className="flex w-full items-baseline justify-between gap-3 px-3.5 py-2.5 text-left text-[0.875rem] text-ink transition-colors hover:bg-bone"
+                className="flex w-full items-center gap-2.5 px-3 py-2 text-left transition-colors hover:bg-bone"
                 onClick={() => {
                   onChange(row.label, { domain: row.hint ?? null });
                   setOpen(false);
                 }}
               >
-                <span>{row.label}</span>
+                {row.iconUrl ? (
+                  /* eslint-disable-next-line @next/next/no-img-element */
+                  <img
+                    src={row.iconUrl}
+                    alt=""
+                    width={20}
+                    height={20}
+                    loading="lazy"
+                    className="size-5 shrink-0 rounded-[3px] bg-bone object-contain"
+                    /* A company with no mark on file must not leave a broken
+                       image icon in a dropdown — hide it and keep the row. */
+                    onError={(event) => {
+                      event.currentTarget.style.visibility = "hidden";
+                    }}
+                  />
+                ) : (
+                  <span
+                    aria-hidden
+                    className="size-5 shrink-0 rounded-[3px] border border-line bg-bone"
+                  />
+                )}
+                <span className="min-w-0 flex-1 truncate text-[0.875rem] text-ink">
+                  {row.label}
+                </span>
                 {row.hint ? (
                   <span className="font-mono shrink-0 text-[0.65rem] text-slate-soft">
                     {row.hint}
@@ -248,7 +292,7 @@ function Combobox({
               </button>
             </li>
           ))}
-          <li className="border-t border-line px-3.5 py-2">
+          <li className="border-t border-line px-3 py-2">
             <p className="text-[0.7rem] leading-snug text-slate-ink">
               Not listed? Keep typing — whatever you write is saved as it is.
             </p>
@@ -281,8 +325,6 @@ export default function DetailsForm({
   const saveAnswers = useMutation(api.questions.answerProfileQuestions);
   const setConsent = useMutation(api.profiles.setLocationConsent);
 
-  const suggestCompanies = useAction(api.lookups.companies);
-  const suggestPositions = useAction(api.lookups.positions);
   const resolveLocation = useAction(api.lookups.resolveLocation);
   const locateTypedLocation = useAction(api.lookups.locateTypedLocation);
 
@@ -318,7 +360,16 @@ export default function DetailsForm({
       phone: profile?.phone ?? "",
       location: profile?.location ?? "",
       address: profile?.address ?? "",
-      batch: profile?.batch ? String(profile.batch) : "",
+      /*
+       * The select holds the admin's LABEL ("2020-2024"); the profile stores
+       * the graduating year. Reopening the form therefore has to map back, or
+       * a member with batch 2024 would see an empty dropdown and be asked to
+       * choose something they already chose.
+       */
+      batch: batchLabelForYear(
+        profile?.batch ?? null,
+        (config?.fields ?? []).find((field) => field.key === "batch")?.options ?? [],
+      ),
       department: profile?.department ?? "",
       company: profile?.company ?? "",
       workLocation: profile?.workLocation ?? "",
@@ -398,7 +449,15 @@ export default function DetailsForm({
         return;
       }
       if (field.key === "batch") {
-        if (raw) payload.batch = Number(raw);
+        // "2020-2024" is submitted as 2024 — see batchYearFromLabel, which is
+        // the same rule the server validates with.
+        const year = raw ? batchYearFromLabel(raw) : null;
+        if (raw && year === null) {
+          setBusy(false);
+          toast.error(`${field.label} does not name a year. Choose one from the list.`);
+          return;
+        }
+        if (year !== null) payload.batch = year;
         continue;
       }
       payload[field.key] = raw;
@@ -561,20 +620,14 @@ export default function DetailsForm({
                   help={field.help}
                   htmlFor={id}
                 >
-                  <Combobox
+                  <SuggestBox
                     id={id}
+                    kind="company"
                     value={value}
                     placeholder="Start typing your employer"
                     onChange={(next, extra) => {
                       set(field.key, next);
                       if (extra) setCompanyDomain(extra.domain ?? "");
-                    }}
-                    fetchSuggestions={async (query) => {
-                      const rows = await suggestCompanies({ query });
-                      return rows.map((row) => ({
-                        label: row.name,
-                        hint: row.domain,
-                      }));
                     }}
                   />
                 </Row>
@@ -590,15 +643,12 @@ export default function DetailsForm({
                   help={field.help}
                   htmlFor={id}
                 >
-                  <Combobox
+                  <SuggestBox
                     id={id}
+                    kind="position"
                     value={value}
                     placeholder="Start typing your role"
                     onChange={(next) => set(field.key, next)}
-                    fetchSuggestions={async (query) => {
-                      const rows = await suggestPositions({ query });
-                      return rows.map((row) => ({ label: row.title }));
-                    }}
                   />
                 </Row>
               );

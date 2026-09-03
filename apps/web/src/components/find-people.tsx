@@ -17,7 +17,7 @@ import {
   Pill,
   VerifiedMark,
 } from "@/components/kit";
-import { DEPARTMENT_NAMES } from "@/lib/site";
+import { batchYearFromLabel, DEPARTMENT_NAMES } from "@/lib/site";
 
 /**
  * Find people — search, mutuals and the connect action in one place.
@@ -139,16 +139,29 @@ export default function FindPeople() {
   const batchCounts = useQuery(api.directory.batchCounts);
   const departmentCounts = useQuery(api.directory.departmentCounts);
 
+  /*
+   * The admin's batch options are labels covering four years ("2020-2024") and
+   * the directory indexes the graduating year, so the option VALUE carries the
+   * year and the option TEXT carries the label. The counts beside each are
+   * matched on the year, which is what the directory actually groups by.
+   */
   const batchOptions = useMemo(() => {
+    const counts = new Map(
+      (batchCounts ?? []).map((row) => [row.batch, row.count]),
+    );
     const configured = config?.fields.find((field) => field.key === "batch");
     if (configured && configured.options.length > 0) {
-      const counts = new Map(
-        (batchCounts ?? []).map((row) => [String(row.batch), row.count]),
-      );
-      return configured.options.map((value) => ({
-        value,
-        label: counts.has(value) ? `${value} (${counts.get(value)})` : value,
-      }));
+      return configured.options.flatMap((option) => {
+        const year = batchYearFromLabel(option);
+        if (year === null) return [];
+        const count = counts.get(year);
+        return [
+          {
+            value: String(year),
+            label: count ? `${option} (${count})` : option,
+          },
+        ];
+      });
     }
     return (batchCounts ?? []).map((row) => ({
       value: String(row.batch),

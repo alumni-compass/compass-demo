@@ -9,7 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireEmail } from "./authz";
-import { activeFields, optionsFor } from "./profileFields";
+import { activeFields, batchYears, optionsFor } from "./profileFields";
 
 /**
  * Module 2 — Alumni Profiles.
@@ -314,11 +314,19 @@ export const upsertProfile = mutation({
       if (!Number.isInteger(args.batch)) {
         throw new ConvexError("A graduating batch is a year, like 2021.");
       }
+      /*
+       * The options are LABELS like "2020-2024" and the stored value is the
+       * graduating year, so the check is against the years those labels
+       * resolve to — not against the label text. `batchYears` is the same
+       * function the form uses to decide what to submit, so the two cannot
+       * disagree about what "2020-2024" means.
+       */
       const { options } = await optionsFor(ctx, "batch");
-      if (options.length > 0 && !options.includes(String(args.batch))) {
-        const shown = options.slice(0, 12).join(", ");
+      const allowed = batchYears(options);
+      if (allowed.length > 0 && !allowed.includes(args.batch)) {
+        const shown = options.slice(0, 8).join(", ");
         throw new ConvexError(
-          `Choose one of the batches the association lists: ${shown}${options.length > 12 ? ", and so on" : ""}.`,
+          `Choose one of the batches the association lists: ${shown}${options.length > 8 ? ", and so on" : ""}.`,
         );
       }
       patch.batch = args.batch;

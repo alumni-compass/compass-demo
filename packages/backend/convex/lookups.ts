@@ -1,7 +1,13 @@
 import { v } from "convex/values";
 
-import { internal } from "./_generated/api";
-import { action, internalAction, internalQuery } from "./_generated/server";
+import { api, internal } from "./_generated/api";
+import {
+  action,
+  internalAction,
+  internalMutation,
+  internalQuery,
+  query,
+} from "./_generated/server";
 import { requireActionIdentity } from "./authz";
 
 /**
@@ -76,6 +82,161 @@ function dedupe<T>(rows: T[], keyOf: (row: T) => string) {
 }
 
 /* ------------------------------------------------------------------ */
+/* The cache                                                           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * How long an answer is worth reusing.
+ *
+ * Companies move slowly and job taxonomies move slower. A week and a month are
+ * both far shorter than the rate at which either list actually changes, and the
+ * point of the cache is the twentieth member typing "infos", not the freshness
+ * of the tenth character.
+ */
+const CACHE_TTL = {
+  company: 7 * 24 * 60 * 60 * 1000,
+  position: 30 * 24 * 60 * 60 * 1000,
+} as const;
+
+const kindValidator = v.union(v.literal("company"), v.literal("position"));
+
+/** One key per question, so casing and padding cannot fork the cache. */
+function cacheKey(raw: string) {
+  return raw.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * The cached answer, if there is a fresh one.
+ *
+ * A QUERY, deliberately, and that is the whole performance fix. The client
+ * subscribes to this over the socket it already holds, so a hit costs no
+ * network request at all. On a miss it returns `hit: false`, the client fires
+ * the action once, the action writes the row, and this subscription delivers
+ * the result without the client asking again.
+ *
+ * Public: it returns public facts about public companies, keyed on a fragment
+ * of a company name. There is nothing here belonging to a member.
+ */
+export const cached = query({
+  args: { kind: kindValidator, query: v.string() },
+  handler: async (ctx, args) => {
+    const key = cacheKey(args.query);
+    if (key.length < MIN_QUERY) return { hit: false as const, rows: [] };
+
+    const row = await ctx.db
+      .query("lookupCache")
+      .withIndex("by_kind_query", (q) => q.eq("kind", args.kind).eq("query", key))
+      .unique();
+
+    if (!row) return { hit: false as const, rows: [] };
+    if (Date.now() - row.fetchedAt > CACHE_TTL[args.kind]) {
+      // Stale rows are served anyway rather than withheld: a slightly old list
+      // beats an empty box while the action refetches behind it.
+      return { hit: true as const, stale: true, rows: JSON.parse(row.payload) };
+    }
+    return { hit: true as const, stale: false, rows: JSON.parse(row.payload) };
+  },
+});
+
+export const remember = internalMutation({
+  args: { kind: kindValidator, query: v.string(), payload: v.string() },
+  handler: async (ctx, args) => {
+    const key = cacheKey(args.query);
+    const existing = await ctx.db
+      .query("lookupCache")
+      .withIndex("by_kind_query", (q) => q.eq("kind", args.kind).eq("query", key))
+      .unique();
+
+    if (existing) {
+      await ctx.db.patch(existing._id, {
+        payload: args.payload,
+        fetchedAt: Date.now(),
+      });
+      return { updated: true };
+    }
+    await ctx.db.insert("lookupCache", {
+      kind: args.kind,
+      query: key,
+      payload: args.payload,
+      fetchedAt: Date.now(),
+    });
+    return { updated: false };
+  },
+});
+
+/**
+ * Drops cached answers, so the next lookup goes back to the source.
+ *
+ * Operational tool rather than application code. Reasons to reach for it: a
+ * source has started returning better results and the old ones are still
+ * inside the TTL, or a row was written by hand during testing and is now
+ * shadowing the real answer.
+ *
+ *   npx convex run lookups:clearCache '{"kind":"company"}'
+ *   npx convex run lookups:clearCache '{"kind":"company","query":"infos"}'
+ *
+ * Internal: the cache is a performance detail, and nothing a browser holds
+ * should be able to empty it and send every subsequent keystroke to a third
+ * party.
+ */
+export const clearCache = internalMutation({
+  args: { kind: kindValidator, query: v.optional(v.string()) },
+  handler: async (ctx, args) => {
+    if (args.query !== undefined) {
+      const row = await ctx.db
+        .query("lookupCache")
+        .withIndex("by_kind_query", (q) =>
+          q.eq("kind", args.kind).eq("query", cacheKey(args.query!)),
+        )
+        .unique();
+      if (row) await ctx.db.delete(row._id);
+      return { deleted: row ? 1 : 0 };
+    }
+
+    const rows = await ctx.db
+      .query("lookupCache")
+      .withIndex("by_kind_query", (q) => q.eq("kind", args.kind))
+      .collect();
+    for (const row of rows) await ctx.db.delete(row._id);
+    return { deleted: rows.length };
+  },
+});
+
+/* ------------------------------------------------------------------ */
+/* Logos                                                               */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A logo address for a company domain, built here rather than in the browser.
+ *
+ * TWO SOURCES, and the better one needs a free key.
+ *
+ *   logo.dev — set LOGO_DEV_TOKEN and every suggestion carries a proper,
+ *              sized logo. The token is a PUBLISHABLE key, meant to appear in
+ *              an image URL, which is why returning it inside one is fine:
+ *                  npx convex env set LOGO_DEV_TOKEN pk_xxxxx
+ *              Get it free at logo.dev — that is the API key worth having here.
+ *
+ *   DuckDuckGo — the fallback, no key, no signup. Lower resolution and it is a
+ *              favicon rather than a logo, but it is a real image for almost
+ *              every company with a domain, so the dropdown has marks today
+ *              without anybody registering for anything.
+ *
+ * Clearbit's logo service, which the earlier draft would have used, is gone:
+ * `logo.clearbit.com` no longer resolves at all. Its autocomplete endpoint also
+ * returns `logo: null` on every row now, which is why the address is built from
+ * the domain instead of read from the response.
+ */
+function logoFor(domain: string | null): string | null {
+  if (!domain) return null;
+  const token = process.env.LOGO_DEV_TOKEN;
+  if (token) {
+    return `https://img.logo.dev/${encodeURIComponent(domain)}?token=${encodeURIComponent(token)}&size=64&format=png`;
+  }
+  return `https://icons.duckduckgo.com/ip3/${encodeURIComponent(domain)}.ico`;
+}
+
+/* ------------------------------------------------------------------ */
 /* What the association already has                                    */
 /* ------------------------------------------------------------------ */
 
@@ -111,7 +272,12 @@ export const localValues = internalQuery({
 /* Companies                                                           */
 /* ------------------------------------------------------------------ */
 
-type CompanyHit = { name: string; domain: string | null };
+type CompanyHit = {
+  name: string;
+  domain: string | null;
+  /** Ready to drop into an <img src>. Null when there is no domain. */
+  logoUrl: string | null;
+};
 
 /**
  * Clearbit's autocomplete endpoint — the primary source.
@@ -130,12 +296,8 @@ async function clearbitCompanies(query: string): Promise<CompanyHit[]> {
     if (typeof row !== "object" || row === null) return [];
     const item = row as { name?: unknown; domain?: unknown };
     if (typeof item.name !== "string" || !item.name.trim()) return [];
-    return [
-      {
-        name: item.name.trim(),
-        domain: typeof item.domain === "string" ? item.domain : null,
-      },
-    ];
+    const domain = typeof item.domain === "string" ? item.domain : null;
+    return [{ name: item.name.trim(), domain, logoUrl: logoFor(domain) }];
   });
 }
 
@@ -183,7 +345,7 @@ async function wikidataCompanies(query: string): Promise<CompanyHit[]> {
       "airline",
     ].some((word) => description.includes(word));
     if (!organisational) return [];
-    return [{ name: item.label.trim(), domain: null }];
+    return [{ name: item.label.trim(), domain: null, logoUrl: null }];
   });
 }
 
@@ -194,17 +356,34 @@ export const companies = action({
     const query = args.query.trim();
     if (query.length < MIN_QUERY) return [];
 
+    // The cache is checked here as well as in the client, because two members
+    // typing the same prefix at the same moment both arrive before either has
+    // written a row.
+    const hit = await ctx.runQuery(api.lookups.cached, {
+      kind: "company",
+      query,
+    });
+    if (hit.hit && !hit.stale) return hit.rows as CompanyHit[];
+
     const local: CompanyHit[] = (
       await ctx.runQuery(internal.lookups.localValues, {
         field: "company",
         query,
       })
-    ).map((name: string) => ({ name, domain: null }));
+    ).map((name: string) => ({ name, domain: null, logoUrl: null }));
 
     let remote = await clearbitCompanies(query);
     if (remote.length === 0) remote = await wikidataCompanies(query);
 
-    return dedupe([...local, ...remote], (row) => row.name).slice(0, LIMIT);
+    const rows = dedupe([...local, ...remote], (row) => row.name).slice(0, LIMIT);
+    if (rows.length > 0) {
+      await ctx.runMutation(internal.lookups.remember, {
+        kind: "company",
+        query,
+        payload: JSON.stringify(rows),
+      });
+    }
+    return rows;
   },
 });
 
@@ -330,6 +509,12 @@ export const positions = action({
     if (query.length < MIN_QUERY) return [];
     const needle = query.toLowerCase();
 
+    const hit = await ctx.runQuery(api.lookups.cached, {
+      kind: "position",
+      query,
+    });
+    if (hit.hit && !hit.stale) return hit.rows as PositionHit[];
+
     const local: PositionHit[] = (
       await ctx.runQuery(internal.lookups.localValues, {
         field: "designation",
@@ -345,10 +530,18 @@ export const positions = action({
           ).map((title) => ({ title, source: "list" as const }))
         : [];
 
-    return dedupe([...local, ...remote, ...listed], (row) => row.title).slice(
+    const rows = dedupe([...local, ...remote, ...listed], (row) => row.title).slice(
       0,
       LIMIT,
     );
+    if (rows.length > 0) {
+      await ctx.runMutation(internal.lookups.remember, {
+        kind: "position",
+        query,
+        payload: JSON.stringify(rows),
+      });
+    }
+    return rows;
   },
 });
 

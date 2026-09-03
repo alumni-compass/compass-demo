@@ -471,6 +471,33 @@ export default defineSchema({
   }).index("by_post", ["postId", "createdAt"]),
 
 
+  /**
+   * Answers from the outside world, kept so the same question is not asked
+   * twice.
+   *
+   * WHY THIS EXISTS. Employer and job-title suggestions come from third-party
+   * endpoints reached through a Convex action, and an action cannot be cached:
+   * every keystroke that survived the debounce went out to the network and back
+   * before the member saw a list. Typing "infosys" was six round trips to
+   * somebody else's server, and it felt like it.
+   *
+   * A row here turns the second person to type the same prefix -- and the same
+   * person backspacing -- into a local read over the socket that is already
+   * open. The action still fetches on a miss, then writes the row, and the
+   * reactive query the client is already watching delivers it.
+   *
+   * `query` is normalised lowercase, so "Infosys" and "infosys" are one row.
+   * Nothing personal is stored: the key is a fragment of a company name and the
+   * payload is a public answer about public companies.
+   */
+  lookupCache: defineTable({
+    kind: v.union(v.literal("company"), v.literal("position")),
+    query: v.string(),
+    /** The result rows, as JSON. Shape belongs to lookups.ts, not the schema. */
+    payload: v.string(),
+    fetchedAt: v.number(),
+  }).index("by_kind_query", ["kind", "query"]),
+
   /* ================================================================== */
   /* The member details form                                             */
   /* ================================================================== */

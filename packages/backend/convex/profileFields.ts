@@ -9,7 +9,6 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { requireRole } from "./authz";
-import { DEPARTMENTS } from "./schema";
 
 /**
  * The member details form, as the association configures it.
@@ -39,19 +38,77 @@ import { DEPARTMENTS } from "./schema";
 /* The defaults                                                        */
 /* ------------------------------------------------------------------ */
 
-/** RITAA was established in 2017, so there is no earlier cohort. */
-const FIRST_BATCH = 2017;
+/**
+ * The programmes the institute actually runs, as the association listed them.
+ *
+ * THE DEGREE IS PART OF THE LABEL, and not for decoration: Computer Science and
+ * Engineering is offered at both B.E and M.E, so the branch alone does not
+ * identify a programme. It would also collide — `setOptions` refuses two
+ * options that differ only by case, and that branch appearing twice is exactly
+ * that.
+ *
+ * These are the *profile* programmes. `DEPARTMENTS` in schema.ts is a separate
+ * vocabulary: the short codes the college spreadsheets use, which `roster.ts`
+ * normalises on import. The two lists describe different things — what a member
+ * says they studied, versus how the registrar files it — and deliberately do
+ * not have to agree.
+ */
+export const PROGRAMMES = [
+  "B.Tech — Artificial Intelligence and Data Science",
+  "B.E — Civil Engineering",
+  "B.Tech — Computer Science and Business Systems",
+  "B.E — Computer Science and Engineering",
+  "M.E — Computer Science and Engineering",
+  "B.E — Computer Science and Engineering (AIML)",
+  "B.E — Computer Science and Engineering (Cyber Security)",
+  "B.E — Electrical and Electronics Engineering",
+  "B.E — Electronics and Communication Engineering",
+  "B.Tech — Information Technology",
+  "B.E — Mechanical Engineering",
+] as const;
 
 /**
- * Batch options, generated rather than typed out, from 2017 to next year.
+ * Batches as the association names them: the four years, not the last one.
  *
- * Seeded once. After that the list belongs to the admin — `setOptions` can add
- * 2028 or drop a year that never graduated, and nothing here overwrites it.
+ * WHAT IS STORED IS STILL A NUMBER. `alumni.batch` is an indexed number — the
+ * batch rail, the directory facets and the search filters all read it — so
+ * "2020-2024" is a label and the value written to the profile is 2024, the year
+ * that cohort left. `batchYear` is the one place that conversion happens, and
+ * both the validator and the form call it.
+ *
+ * Editing this list in the console is enough to add a cohort: the year is
+ * derived from whatever label an admin types, so "2025-2029" needs no code.
  */
-function defaultBatchOptions() {
-  const last = new Date().getFullYear() + 1;
-  const years: string[] = [];
-  for (let year = last; year >= FIRST_BATCH; year -= 1) years.push(String(year));
+const DEFAULT_BATCHES = [
+  "2024-2028",
+  "2023-2027",
+  "2022-2026",
+  "2021-2025",
+  "2020-2024",
+] as const;
+
+/**
+ * The graduating year inside a batch label.
+ *
+ * Takes the LAST four-digit group, so "2020-2024" is 2024 and a bare "2024"
+ * still resolves — which matters for the profiles saved before the labels
+ * became ranges. Returns null when the label carries no year at all, and
+ * callers treat that as "not a selectable batch" rather than guessing one.
+ */
+export function batchYear(label: string): number | null {
+  const matches = label.match(/\d{4}/g);
+  if (!matches || matches.length === 0) return null;
+  const year = Number(matches[matches.length - 1]);
+  return Number.isInteger(year) ? year : null;
+}
+
+/** Every year the configured labels resolve to. The validator reads this. */
+export function batchYears(options: readonly string[]): number[] {
+  const years: number[] = [];
+  for (const option of options) {
+    const year = batchYear(option);
+    if (year !== null) years.push(year);
+  }
   return years;
 }
 
@@ -131,18 +188,19 @@ export function defaultFields(): FieldSeed[] {
     },
     {
       key: "batch",
-      label: "Graduating batch",
-      help: "The year you graduated.",
+      label: "Batch",
+      help: "The four years you were on campus.",
       kind: "select",
-      options: defaultBatchOptions(),
+      options: [...DEFAULT_BATCHES],
       required: true,
       locked: true,
     },
     {
       key: "department",
-      label: "Department",
+      label: "Programme",
+      help: "The degree and branch you graduated in.",
       kind: "select",
-      options: [...DEPARTMENTS],
+      options: [...PROGRAMMES],
       required: true,
       locked: true,
     },
@@ -386,6 +444,50 @@ async function ensure(ctx: MutationCtx, byEmail?: string) {
   }
   return { added, total: existing.length + added };
 }
+
+/**
+ * Rewrites the option list of named fields back to the built-in defaults.
+ *
+ * SEPARATE FROM `seedDefaults` ON PURPOSE. That one never touches a row that
+ * already exists, because a "restore defaults" which silently discarded an
+ * admin's curated list would be a trap. This one is the explicit opposite: it
+ * is destructive to the option list and nothing else, and it is internal so it
+ * can only be run from the CLI by somebody holding the deploy key.
+ *
+ * What it is for: the association handing over a corrected list — the eleven
+ * real programmes, or batches renamed from single years to the four-year
+ * ranges. Existing ANSWERS are untouched; a member whose stored value is no
+ * longer offered keeps it and is asked to choose again next time they open the
+ * form. See the note on `setOptions`.
+ *
+ *   npx convex run profileFields:resetOptions '{"keys":["batch","department"]}'
+ */
+export const resetOptions = internalMutation({
+  args: { keys: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const defaults = new Map(defaultFields().map((seed) => [seed.key, seed]));
+    const done: Array<{ key: string; count: number }> = [];
+
+    for (const key of args.keys) {
+      const seed = defaults.get(key);
+      if (!seed) continue;
+      const row = await ctx.db
+        .query("profileFields")
+        .withIndex("by_key", (q) => q.eq("key", key))
+        .unique();
+      if (!row) continue;
+
+      await ctx.db.patch(row._id, {
+        options: seed.options,
+        label: seed.label,
+        help: seed.help,
+        updatedAt: Date.now(),
+      });
+      done.push({ key, count: seed.options.length });
+    }
+    return { reset: done };
+  },
+});
 
 /** For the CLI: `npx convex run profileFields:seedDefaults`. */
 export const seedDefaults = internalMutation({
