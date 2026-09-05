@@ -220,7 +220,7 @@ function Composer({
 
   if (closed) {
     return (
-      <div className="border-t border-line bg-bone px-5 py-4">
+      <div className="border-t border-line bg-bone px-6 py-5 sm:px-7">
         <p className="text-[0.85rem] leading-relaxed text-slate-ink">
           You are no longer connected to {counterpartName}, so this conversation is
           closed. Everything already said stays here.{" "}
@@ -321,7 +321,7 @@ function ThreadPane({
   return (
     <div className="flex h-full flex-col">
       {/* ---- Thread header ------------------------------------------------ */}
-      <header className="flex items-start gap-3 border-b border-line bg-surface px-5 py-4">
+      <header className="flex items-start gap-3.5 border-b border-line bg-surface px-6 py-5 sm:px-7">
         <button
           type="button"
           onClick={onBack}
@@ -375,7 +375,7 @@ function ThreadPane({
       {/* ---- Messages ---------------------------------------------------- */}
       <div
         ref={scroller}
-        className="min-h-[18rem] flex-1 space-y-3 overflow-y-auto bg-bone px-5 py-6"
+        className="min-h-[22rem] flex-1 space-y-4 overflow-y-auto bg-bone px-6 py-8 sm:px-7"
       >
         {thread.truncated ? (
           <p className="font-mono text-center text-[0.65rem] uppercase tracking-[0.12em] text-slate-soft">
@@ -514,7 +514,7 @@ export default function MessagesPage() {
       />
 
       <Shell>
-        <section className="py-12 sm:py-16">
+        <section className="py-14 sm:py-20">
           <AuthLoading>
             <LoadingRows rows={5} />
           </AuthLoading>

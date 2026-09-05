@@ -288,9 +288,26 @@ export default defineSchema({
     postCount: v.number(),
     archived: v.boolean(),
     createdAt: v.number(),
+    /**
+     * Whether the association has approved this community existing.
+     *
+     * OPTIONAL, AND THAT IS DELIBERATE. Communities created before review
+     * existed have no value here, and they are treated as approved -- reading
+     * absence as "pending" would silently hide every room that is already
+     * running and being posted in. New rows always carry an explicit value, so
+     * absence only ever means "predates the gate".
+     */
+    status: v.optional(
+      v.union(v.literal("pending"), v.literal("approved"), v.literal("rejected")),
+    ),
+    reviewedAt: v.optional(v.number()),
+    reviewedByEmail: v.optional(v.string()),
+    /** Why it was turned down, shown to the member who asked. */
+    reviewNote: v.optional(v.string()),
   })
     .index("by_slug", ["slug"])
     .index("by_created", ["createdAt"])
+    .index("by_status", ["status"])
     .index("by_creator", ["createdByEmail"]),
 
   /**
@@ -617,6 +634,15 @@ export default defineSchema({
     industries: v.array(v.string()),
     bio: v.optional(v.string()),
     avatarUrl: v.optional(v.string()),
+    /**
+     * The uploaded file behind `avatarUrl`, when the member uploaded one.
+     *
+     * `avatarUrl` alone would be enough to render the photograph, but not to
+     * replace it: without the id, every new photograph would leave the old
+     * file in storage for ever. Absent when the avatar came from the OAuth
+     * provider rather than an upload, which is why it is not a required pair.
+     */
+    avatarStorageId: v.optional(v.id("_storage")),
     linkedinUrl: v.optional(v.string()),
     /** Module 1 — alumni verification for authenticity. */
     verified: v.boolean(),

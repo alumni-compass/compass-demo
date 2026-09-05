@@ -6,6 +6,7 @@ import { useState, type ReactNode } from "react";
 
 import DetailsFormAdmin from "@/components/details-form-admin";
 import ModeratePosts from "@/components/moderate-posts";
+import ReviewCommunities from "@/components/review-communities";
 import VerifyMembers from "@/components/verify-members";
 import RosterImport from "@/components/roster-import";
 import {
@@ -834,6 +835,22 @@ npx convex env set LINKEDIN_CLIENT_SECRET  …`}
             lede="The mark beside a member's name across the portal is one flag on their record. Check the batch and roll number against college records, then set it here — the button records the decision rather than making it."
           />
           <VerifyMembers />
+        </Shell>
+      </section>
+
+      {/* ---- Community requests -------------------------------------------
+          A community is a members-only space carrying the association's name,
+          so creating one files a request rather than opening a room. Until an
+          admin answers it here, the community is invisible to everyone but the
+          member who asked and refuses every post. */}
+      <section id="communities" className="border-t border-line bg-bone-deep">
+        <Shell className="py-16 sm:py-20">
+          <SectionHead
+            eyebrow="Community requests"
+            title="Who may start a room"
+            lede="Members ask; the association answers. Each request leads with who is asking and what they want it for, because that is the decision. A refusal needs a reason, and the member is shown it."
+          />
+          <ReviewCommunities />
         </Shell>
       </section>
 

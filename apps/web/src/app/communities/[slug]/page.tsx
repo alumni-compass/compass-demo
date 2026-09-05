@@ -710,6 +710,32 @@ function CommunityBody({ slug }: { slug: string }) {
     );
   }
 
+  /**
+   * Sharing the room, by the shortest route that works everywhere.
+   *
+   * On a phone this opens the system share sheet, which is what somebody
+   * sending a link to a WhatsApp group actually wants. Everywhere else it
+   * copies the URL. Both end with the same link, and the link lands on this
+   * page -- where an outsider gets the join panel rather than the feed, so a
+   * shared link admits nobody by itself.
+   */
+  async function share() {
+    const url = `${window.location.origin}/communities/${community?.slug ?? ""}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: community?.name, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copied. Anyone you send it to can ask to join.");
+    } catch (error) {
+      // A cancelled share sheet throws too, and is not a failure worth saying
+      // anything about.
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      toast.error("That link could not be copied. The address bar has it.");
+    }
+  }
+
   const pending = requests?.length ?? 0;
   // Open on whatever is waiting: a queue with people in it beats the feed.
   const active: Tab = tab ?? (pending > 0 ? "requests" : "feed");
@@ -733,6 +759,11 @@ function CommunityBody({ slug }: { slug: string }) {
           label={`${community.name} sections`}
         />
         <div className="flex flex-wrap gap-2">
+          {/* Everyone who can see the room can pass it on: that is what makes a
+              link the way people are actually invited to one. */}
+          <Button size="sm" variant="outline" onClick={() => void share()}>
+            Share link
+          </Button>
           {community.standing === "member" ||
           community.standing === "moderator" ||
           community.standing === "admin" ? (
@@ -753,6 +784,20 @@ function CommunityBody({ slug }: { slug: string }) {
           </Button>
         </div>
       </div>
+
+      {community.state !== "approved" ? (
+        <Card className="mt-6" accent>
+          <Eyebrow>
+            {community.state === "pending" ? "Waiting on the association" : "Not approved"}
+          </Eyebrow>
+          <p className="mt-2.5 text-[0.95rem] leading-relaxed text-ink">
+            {community.state === "pending"
+              ? "This room is not open yet. The association reviews every new community before it appears in the list, and nobody else can see this page or post here until they do."
+              : community.reviewNote ??
+                "The association did not approve this community."}
+          </p>
+        </Card>
+      ) : null}
 
       <div className="mt-6">
         {active === "feed" ? (

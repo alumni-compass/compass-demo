@@ -9,6 +9,7 @@ import {
 } from "convex/react";
 import Link from "next/link";
 
+import AvatarPicker from "@/components/avatar-picker";
 import ConnectedAccounts from "@/components/connected-accounts";
 import DetailsForm from "@/components/details-form";
 import {
@@ -74,6 +75,45 @@ function Completeness() {
   );
 }
 
+/**
+ * The form, in whichever of its two moods applies.
+ *
+ * A member filling this in for the first time is onboarding and should be
+ * carried onward when they save. A member who came back to correct their phone
+ * number is editing and should stay where they are. The difference is not the
+ * route — it is whether a record already exists — so it is decided here rather
+ * than by hardcoding a mode at the mount point.
+ */
+function DetailsPanel() {
+  const profile = useQuery(api.profiles.byEmail);
+
+  if (profile === undefined) {
+    return (
+      <Card>
+        <LoadingRows rows={6} />
+      </Card>
+    );
+  }
+
+  return (
+    <>
+      {/* Only once there is a record to hang it on: the server refuses a
+          photograph before the details exist, so offering it first would be
+          offering a button that fails. */}
+      {profile ? (
+        <Card>
+          <AvatarPicker
+            name={profile.name}
+            currentUrl={profile.avatarUrl ?? null}
+          />
+        </Card>
+      ) : null}
+
+      <DetailsForm mode={profile ? "edit" : "onboarding"} />
+    </>
+  );
+}
+
 export default function WelcomePage() {
   return (
     <>
@@ -116,7 +156,7 @@ export default function WelcomePage() {
                 <ConnectedAccounts callbackURL="/welcome" />
               </Card>
 
-              <DetailsForm mode="onboarding" />
+              <DetailsPanel />
             </div>
 
             <Card className="hover:border-line">

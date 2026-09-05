@@ -44,7 +44,7 @@ export default function MapPage() {
         </Authenticated>
       </PageHeader>
 
-      <Shell className="py-14 sm:py-18">
+      <Shell className="py-14 sm:py-20">
         <Unauthenticated>
           <Empty
             title="Sign in to see the map"

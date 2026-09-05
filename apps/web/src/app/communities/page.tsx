@@ -61,6 +61,19 @@ function JoinControl({ community }: { community: Community }) {
   const requestToJoin = useMutation(api.communities.requestToJoin);
   const [busy, setBusy] = useState(false);
 
+  /*
+   * A room the association has not answered yet has no join button, whatever
+   * the member's standing is. Only its creator can see it at all, and what
+   * they need is the state of their request -- not a control the server would
+   * refuse.
+   */
+  if (community.state === "pending") {
+    return <Pill tone="brass">Waiting on the association</Pill>;
+  }
+  if (community.state === "rejected") {
+    return <Pill tone="quiet">Not approved</Pill>;
+  }
+
   // An approval community may ask screening questions, which belong on a form and
   // not on a card — so the card sends the member to the community page to answer.
   if (community.visibility === "approval" && community.standing === "guest") {
@@ -153,6 +166,21 @@ function CommunityCard({ community }: { community: Community }) {
         {community.tagline}
       </p>
 
+      {/* Only ever seen by the member who asked: nobody else is sent this
+          row until the association has approved it. */}
+      {community.state === "pending" ? (
+        <p className="mt-3 border-l-2 border-brass bg-bone px-3.5 py-2.5 text-[0.85rem] leading-relaxed text-slate-ink">
+          Your request is with the association. Nobody else can see this room or
+          post in it until it is approved.
+        </p>
+      ) : null}
+      {community.state === "rejected" ? (
+        <p className="mt-3 border-l-2 border-maroon bg-bone px-3.5 py-2.5 text-[0.85rem] leading-relaxed text-slate-ink">
+          <span className="text-ink">Not approved.</span>{" "}
+          {community.reviewNote ?? "The association did not give a reason."}
+        </p>
+      ) : null}
+
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line pt-4">
         <span className="font-mono text-[0.7rem] tabular-nums text-slate-ink">
           {community.memberCount}{" "}
@@ -203,8 +231,16 @@ function CreateCommunity() {
         scopeBatch: form.scopeBatch ? Number(form.scopeBatch) : undefined,
         scopeDepartment: form.scopeDepartment || undefined,
       });
-      toast.success(`${form.name} created. You are its first admin.`);
-      router.push(`/communities/${result.slug}` as never);
+      /*
+       * Deliberately not routed onward. The room does not exist for anybody
+       * else yet, so pushing the member into an empty feed they cannot post in
+       * would be showing them a room that is not open. The list behind the
+       * form now carries their request with its state on it.
+       */
+      toast.success(
+        `${form.name} has been sent to the association. You are its admin, and it opens once they approve it.`,
+      );
+      setOpen(false);
     } catch (error) {
       toast.error(actionErrorMessage(error));
     } finally {
@@ -214,7 +250,7 @@ function CreateCommunity() {
 
   if (!open) {
     return (
-      <Button onClick={() => setOpen(true)}>Start a community</Button>
+      <Button onClick={() => setOpen(true)}>Ask to start a community</Button>
     );
   }
 
@@ -231,7 +267,7 @@ function CreateCommunity() {
           portal.
         </p>
 
-        <div className="mt-6 grid gap-5 sm:grid-cols-2">
+        <div className="mt-8 grid gap-6 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <label className={labelClass} htmlFor="c-name">
               Name
@@ -495,7 +531,7 @@ export default function CommunitiesPage() {
       </PageHeader>
 
       <Shell>
-        <section className="py-12 sm:py-16">
+        <section className="py-14 sm:py-20">
           <AuthLoading>
             <LoadingRows rows={4} />
           </AuthLoading>

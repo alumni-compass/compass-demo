@@ -706,9 +706,10 @@ export const suggestions = query({
   args: {},
   handler: async (ctx) => {
     const me = await requireEmail(ctx);
-    const [edges, profiles] = await Promise.all([
+    const [edges, profiles, allEdges] = await Promise.all([
       edgesFor(ctx, me),
       profileIndex(ctx),
+      ctx.db.query("connections").collect(),
     ]);
 
     const exclude = new Set<string>([me]);
@@ -724,51 +725,212 @@ export const suggestions = query({
       return { needsProfile: true as const, rows: [] };
     }
 
-    const scored: Array<{ member: MemberCard; score: number; reason: string }> = [];
+    /* ---- The friend-of-a-friend layer -------------------------------- */
+
+    /*
+     * Who each member is connected to, built once from the accepted edges.
+     *
+     * This is the most predictive signal a network has: two people with four
+     * connections in common usually already know each other, whatever their
+     * batch says. It costs one read of the connections table -- the same read
+     * `networkStats` already does -- and replaces a query per candidate.
+     */
+    const neighbours = new Map<string, Set<string>>();
+    for (const edge of allEdges) {
+      if (edge.status !== "accepted") continue;
+      const a = normalise(edge.requesterEmail);
+      const b = normalise(edge.recipientEmail);
+      let forA = neighbours.get(a);
+      if (!forA) {
+        forA = new Set();
+        neighbours.set(a, forA);
+      }
+      let forB = neighbours.get(b);
+      if (!forB) {
+        forB = new Set();
+        neighbours.set(b, forB);
+      }
+      forA.add(b);
+      forB.add(a);
+    }
+    const myCircle = neighbours.get(me) ?? new Set<string>();
+
+    /* ---- Normalising the things we compare --------------------------- */
+
+    const lower = (value: string | undefined) => (value ?? "").trim().toLowerCase();
+    const myCompany = lower(mine.company);
+    const myWorkLocation = lower(mine.workLocation);
+    const myRegion = lower(mine.region);
+    const myLocation = lower(mine.location);
+    const mySkills = new Set(
+      (mine.skills ?? []).map((skill) => lower(skill)).filter(Boolean),
+    );
+    const myIndustries = new Set(
+      (mine.industries ?? []).map((industry) => lower(industry)).filter(Boolean),
+    );
+
+    /**
+     * The scoring model, and why it adds rather than chooses.
+     *
+     * The previous version was a ladder of `else if`, so exactly one fact about
+     * a candidate ever counted. That produced a specific wrong answer: somebody
+     * in your department, in your city, with three connections in common scored
+     * below a stranger who merely shared your graduating year -- "same batch"
+     * sat higher on the ladder and the rest was never read. Similarity is
+     * cumulative in life, so it is cumulative here.
+     *
+     * The weights are ordered by how strongly each signal predicts that two
+     * members actually want to meet:
+     *
+     *   mutual connections   the strongest, and the only one earned rather
+     *                        than declared. Damped with a square root so one
+     *                        very well-connected member does not fill the list.
+     *   batch + department   a classmate: the people you sat with for four
+     *                        years, and the best cold introduction there is.
+     *   department, a year    either side of your batch -- the senior who was
+     *                        there when you arrived, the junior who was there
+     *                        when you left. Real, and previously invisible.
+     *   same employer        a colleague, worth a connection even across
+     *                        batches and departments.
+     *   skills / industries  what you would actually talk about. Counted per
+     *                        overlap and capped, so a member who lists twenty
+     *                        skills cannot outrank a genuine classmate.
+     *   place                the weakest, because a city is not a relationship.
+     *
+     * Nothing is dropped for having no signal at all any more; a member scoring
+     * zero simply sorts last, which matters on a young deployment where most
+     * people have not yet filled in enough to match on.
+     */
+    const scored: Array<{
+      member: MemberCard;
+      score: number;
+      reason: string;
+      mutuals: number;
+    }> = [];
 
     for (const [email, profile] of profiles.byEmail) {
       if (exclude.has(email)) continue;
 
+      /* -- Signals ---------------------------------------------------- */
+      const theirCircle = neighbours.get(email);
+      let mutuals = 0;
+      if (theirCircle) {
+        // Walk the smaller set, so this stays cheap against a hub member.
+        const small = myCircle.size <= theirCircle.size ? myCircle : theirCircle;
+        const large = myCircle.size <= theirCircle.size ? theirCircle : myCircle;
+        for (const entry of small) if (large.has(entry)) mutuals += 1;
+      }
+
       const sameBatch = profile.batch > 0 && profile.batch === mine.batch;
+      const yearGap =
+        profile.batch > 0 && mine.batch > 0
+          ? Math.abs(profile.batch - mine.batch)
+          : Number.POSITIVE_INFINITY;
       const sameDept =
         profile.department.length > 0 && profile.department === mine.department;
-      const sameCompany =
-        profile.company.trim().length > 0 &&
-        profile.company.trim() === mine.company.trim();
-      const sameRegion =
-        profile.region.length > 0 && profile.region === mine.region;
+      const sameCompany = myCompany.length > 0 && lower(profile.company) === myCompany;
+      const sameWorkLocation =
+        myWorkLocation.length > 0 && lower(profile.workLocation) === myWorkLocation;
+      const samePlace =
+        (myRegion.length > 0 && lower(profile.region) === myRegion) ||
+        (myLocation.length > 0 && lower(profile.location) === myLocation);
 
-      let score = 0;
-      let reason = "";
-
-      if (sameBatch && sameDept) {
-        score = 5;
-        reason = `${profile.department} · ${profile.batch} batch, same as you`;
-      } else if (sameCompany) {
-        score = 4;
-        reason = `Also at ${profile.company}`;
-      } else if (sameBatch) {
-        score = 3;
-        reason = `${profile.batch} batch, same as you`;
-      } else if (sameDept) {
-        score = 2;
-        reason = `Also ${profile.department}`;
-      } else if (sameRegion) {
-        score = 1;
-        reason = `Also in ${profile.region}`;
-      } else {
-        continue;
+      let sharedSkills = 0;
+      for (const skill of profile.skills ?? []) {
+        if (mySkills.has(lower(skill))) sharedSkills += 1;
       }
+      let sharedIndustries = 0;
+      for (const industry of profile.industries ?? []) {
+        if (myIndustries.has(lower(industry))) sharedIndustries += 1;
+      }
+
+      /* -- Weights ---------------------------------------------------- */
+      let score = 0;
+      if (mutuals > 0) score += 4 * Math.sqrt(mutuals);
+
+      if (sameBatch && sameDept) score += 6;
+      else if (sameDept && yearGap <= 1) score += 4;
+      else if (sameBatch) score += 3;
+      else if (sameDept) score += 2.5;
+      else if (yearGap <= 1) score += 1;
+
+      if (sameCompany) score += 3.5;
+      if (sameWorkLocation && !sameCompany) score += 1.5;
+      // Capped at two apiece: overlap is a hint, not a ranking of its own.
+      score += Math.min(sharedSkills, 2) * 0.75;
+      score += Math.min(sharedIndustries, 2) * 0.5;
+      if (samePlace) score += 1;
 
       // A verified member is a safer first introduction than an unverified one.
       if (profile.verified) score += 0.5;
+      // Somebody open to mentoring has said they want to be approached.
+      if (profile.openToMentor) score += 0.5;
 
-      scored.push({ member: memberCard(profile, profile.name), score, reason });
+      /*
+       * The reason names the strongest thing the two of you have in common, in
+       * the order a person would say it out loud. Mutuals lead wherever there
+       * are any, because "three connections in common" is the sentence that
+       * actually persuades somebody to press connect.
+       */
+      const sharedSkillName = (profile.skills ?? []).find((skill) =>
+        mySkills.has(lower(skill)),
+      );
+      const sharedIndustryName = (profile.industries ?? []).find((industry) =>
+        myIndustries.has(lower(industry)),
+      );
+
+      let reason: string;
+      if (mutuals > 0) {
+        const shared =
+          mutuals === 1 ? "1 connection in common" : mutuals + " connections in common";
+        if (sameBatch && sameDept) {
+          reason = shared + " \u00b7 " + profile.batch + " batch, same department";
+        } else if (sameDept) {
+          reason = shared + " \u00b7 also " + profile.department;
+        } else if (sameCompany) {
+          reason = shared + " \u00b7 also at " + profile.company;
+        } else {
+          reason = shared;
+        }
+      } else if (sameBatch && sameDept) {
+        reason = profile.department + " \u00b7 " + profile.batch + " batch, same as you";
+      } else if (sameDept && yearGap <= 1) {
+        reason =
+          profile.batch > mine.batch
+            ? profile.department + ", the batch below you"
+            : profile.department + ", the batch above you";
+      } else if (sameCompany) {
+        reason = "Also at " + profile.company;
+      } else if (sameBatch) {
+        reason = profile.batch + " batch, same as you";
+      } else if (sharedSkillName) {
+        reason = "Also works in " + sharedSkillName;
+      } else if (sameDept) {
+        reason = "Also " + profile.department;
+      } else if (sharedIndustryName) {
+        reason = "Also in " + sharedIndustryName;
+      } else if (sameWorkLocation) {
+        reason = "Also works in " + profile.workLocation;
+      } else if (samePlace) {
+        reason = "Also in " + (profile.region || profile.location);
+      } else {
+        reason = "From the association";
+      }
+
+      scored.push({
+        member: memberCard(profile, profile.name),
+        score,
+        reason,
+        mutuals,
+      });
     }
 
     scored.sort(
       (a, b) =>
         b.score - a.score ||
+        b.mutuals - a.mutuals ||
+        // Then the more recent batch, then alphabetical, so the list is stable
+        // between reads rather than reshuffling on every reconnect.
         (b.member.batch ?? 0) - (a.member.batch ?? 0) ||
         a.member.name.localeCompare(b.member.name),
     );
@@ -778,6 +940,7 @@ export const suggestions = query({
       rows: scored.slice(0, SUGGESTION_LIMIT).map((row) => ({
         member: row.member,
         reason: row.reason,
+        mutuals: row.mutuals,
       })),
     };
   },

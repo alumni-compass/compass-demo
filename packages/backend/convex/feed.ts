@@ -271,6 +271,19 @@ export const createPost = mutation({
       if (community.archived) {
         throw new ConvexError("That community is archived, so its feed is closed.");
       }
+      /*
+       * A room the association has not cleared yet has no feed to post in.
+       * The creator is already its admin, so without this check they could
+       * fill an unapproved space with posts and present the review with a
+       * fait accompli.
+       */
+      if ((community.status ?? "approved") !== "approved") {
+        throw new ConvexError(
+          (community.status ?? "approved") === "pending"
+            ? "This community is waiting for the association to approve it. You can post once it is open."
+            : "This community was not approved by the association.",
+        );
+      }
       const membership = await activeMembership(ctx, args.communityId, email);
       if (!membership) {
         throw new ConvexError(
@@ -891,6 +904,87 @@ export const feedStats = query({
  *   npx convex run feed:removeSeededPosts     (to take them out again)
  */
 
+/**
+ * The sample members the seeded posts belong to.
+ *
+ * WHY THEY EXIST. The seeded posts used to be written by the association's own
+ * addresses, so a new member opened the feed and saw five notices from the
+ * office. That reads as a noticeboard, not a network -- nobody replies to a
+ * noticeboard. Posts from named graduates across different batches and
+ * departments show what the feed is for, which is the whole reason to seed it.
+ *
+ * WHAT THEY ARE, PLAINLY. These are placeholder records, not real graduates.
+ * They are marked `verified: false` so they never carry the tick, they are not
+ * `featured`, and their addresses all sit on the reserved `sample.invalid`
+ * domain -- which cannot receive mail and cannot be signed in to, so nobody can
+ * ever take one over. `removeSeededPosts` deletes them along with the posts.
+ *
+ * They will appear in the directory and in suggestions while they exist, which
+ * is the cost of seeding a network with people. Run the removal once real
+ * members are posting.
+ */
+const SEED_MEMBERS: Array<{
+  email: string;
+  name: string;
+  batch: number;
+  department: string;
+  designation: string;
+  company: string;
+  region: string;
+  location: string;
+}> = [
+  {
+    email: "meenakshi.s@sample.invalid",
+    name: "Meenakshi Sundaram",
+    batch: 2021,
+    department: "B.E — Computer Science and Engineering",
+    designation: "Software Engineer",
+    company: "Zoho",
+    region: "Tamil Nadu",
+    location: "Chennai, Tamil Nadu, India",
+  },
+  {
+    email: "arun.k@sample.invalid",
+    name: "Arunkumar Rajendran",
+    batch: 2020,
+    department: "B.E — Mechanical Engineering",
+    designation: "Design Engineer",
+    company: "Ashok Leyland",
+    region: "Tamil Nadu",
+    location: "Hosur, Tamil Nadu, India",
+  },
+  {
+    email: "divya.r@sample.invalid",
+    name: "Divya Ramanathan",
+    batch: 2022,
+    department: "B.Tech — Information Technology",
+    designation: "Product Analyst",
+    company: "Freshworks",
+    region: "Tamil Nadu",
+    location: "Chennai, Tamil Nadu, India",
+  },
+  {
+    email: "karthik.v@sample.invalid",
+    name: "Karthikeyan Velu",
+    batch: 2020,
+    department: "B.E — Electronics and Communication Engineering",
+    designation: "Founder",
+    company: "Kovai Systems",
+    region: "Tamil Nadu",
+    location: "Coimbatore, Tamil Nadu, India",
+  },
+  {
+    email: "priya.n@sample.invalid",
+    name: "Priyadharshini Nagarajan",
+    batch: 2023,
+    department: "B.Tech — Artificial Intelligence and Data Science",
+    designation: "Data Scientist",
+    company: "Tiger Analytics",
+    region: "Karnataka",
+    location: "Bengaluru, Karnataka, India",
+  },
+];
+
 /** The exact bodies, which is also how a re-run knows what already exists. */
 const SEED_POSTS: Array<{
   author: string;
@@ -899,25 +993,25 @@ const SEED_POSTS: Array<{
   poll?: string[];
 }> = [
   {
-    author: "alumni@ritrjpm.ac.in",
-    body: "The alumni portal is open.\n\nEverything the association has been doing on WhatsApp and email now has a place: a directory you can actually search, a way to ask another graduate to connect, and this feed, which every verified member reads.\n\nFill in your details when you get a minute — it is what makes you findable to the batch below you looking for a referral.",
+    author: "meenakshi.s@sample.invalid",
+    body: "Four years since we walked out of the CSE block and I still measure every codebase against the one we wrote for our final year project.\n\nPut your details in if you have not yet. I found two people from my batch on here last week that I had lost touch with entirely after the pandemic scattered everyone.",
   },
   {
-    author: "pro.alumni@ritrjpm.ac.in",
-    body: "A note on referrals, because it is the thing we are asked for most.\n\nIf your company is hiring, put it on the careers board rather than in a private message. A post there reaches every batch at once, and you can mark whether you are willing to refer — which is the part that actually changes someone's chances.",
+    author: "arun.k@sample.invalid",
+    body: "We are hiring two design engineers, and I would rather they came from here.\n\nMechanical or production, 2019 batch onwards, Hosur or Chennai. If you are interested, connect with me and send your CV through the portal instead of a cold application — I can walk it to the hiring manager myself, which is the part that actually helps.",
   },
   {
-    author: "race@ritrjpm.ac.in",
-    body: "RACE is the entrepreneurs' corner of the portal, and it works in both directions.\n\nIf you are running something, put up a venture profile and say what you are looking for — a co-founder, a first customer, an introduction. If you are further along, say what you are willing to offer. Both halves are on the same page for a reason.",
+    author: "divya.r@sample.invalid",
+    body: "A thing nobody told me when I graduated: the first job matters much less than the first manager.\n\nIf you are in your final year and weighing two offers, ask to speak to whoever you would report to. Any company worth joining will arrange it. Happy to talk it through with anyone from IT who is deciding right now.",
   },
   {
-    author: "alumni@ritrjpm.ac.in",
+    author: "karthik.v@sample.invalid",
     body: "Which month suits most people for the next reunion?\n\nWe would rather ask than guess. One vote each, and the result is visible to everyone as it comes in.",
     poll: ["January", "April", "August", "December"],
   },
   {
-    author: "pro.alumni@ritrjpm.ac.in",
-    body: "The gallery now holds the convocation albums, and it is thinner than it should be.\n\nIf you have photographs from your own year — convocation, a department day, a hostel corridor at two in the morning — send them to the office and we will add them. A photograph nobody has seen in fifteen years is worth more here than anywhere on your phone.",
+    author: "priya.n@sample.invalid",
+    body: "Went back to campus last month for the first time since graduating and the library has doubled.\n\nTook a few photographs. If you have your own from your year — convocation, a department day, a hostel corridor at two in the morning — the gallery takes them, and a photograph nobody has seen in fifteen years is worth more here than anywhere on your phone.",
     imageUrls: ["/campus-4.jpg", "/campus-6.jpg"],
   },
 ];
@@ -925,6 +1019,39 @@ const SEED_POSTS: Array<{
 export const seedDefaultPosts = internalMutation({
   args: {},
   handler: async (ctx) => {
+    /* ---- The people first, because a post needs an author ------------ */
+    let members = 0;
+    for (const member of SEED_MEMBERS) {
+      const existing = await ctx.db
+        .query("alumni")
+        .filter((q) => q.eq(q.field("email"), member.email))
+        .first();
+      if (existing) continue;
+
+      await ctx.db.insert("alumni", {
+        name: member.name,
+        email: member.email,
+        firstName: member.name.split(" ")[0],
+        lastName: member.name.split(" ").slice(1).join(" "),
+        batch: member.batch,
+        department: member.department,
+        designation: member.designation,
+        company: member.company,
+        region: member.region,
+        location: member.location,
+        skills: [],
+        industries: [],
+        // Never verified: the tick means the association checked a real person
+        // against college records, and nobody checked these.
+        verified: false,
+        featured: false,
+        openToMentor: false,
+        joinedAt: Date.now(),
+      });
+      members += 1;
+    }
+
+    /* ---- Then the posts ---------------------------------------------- */
     const existing = await ctx.db.query("posts").collect();
     const bodies = new Set(existing.map((post) => post.body));
 
@@ -935,11 +1062,12 @@ export const seedDefaultPosts = internalMutation({
       if (bodies.has(seed.body)) continue;
 
       /*
-       * Spaced an hour apart, oldest first, so the feed has a shape rather
-       * than five posts sharing one timestamp. The newest sits about an hour
-       * ago, not in the future — a post dated ahead of now reads as broken.
+       * Spaced a few hours apart, oldest first, so the feed has a shape rather
+       * than five posts sharing one timestamp. The newest sits about three
+       * hours ago, not in the future -- a post dated ahead of now reads as
+       * broken.
        */
-      const createdAt = now - (SEED_POSTS.length - index) * 60 * 60 * 1000;
+      const createdAt = now - (SEED_POSTS.length - index) * 3 * 60 * 60 * 1000;
 
       const postId = await ctx.db.insert("posts", {
         authorEmail: seed.author,
@@ -971,7 +1099,7 @@ export const seedDefaultPosts = internalMutation({
       added += 1;
     }
 
-    return { added, total: SEED_POSTS.length };
+    return { added, members, total: SEED_POSTS.length };
   },
 });
 
@@ -1014,7 +1142,99 @@ export const removeSeededPosts = internalMutation({
       await ctx.db.delete(post._id);
       removed += 1;
     }
-    return { removed };
+
+    /* The placeholder members go too. Leaving them would keep five people in
+       the directory who never existed, which is worse than an empty feed. */
+    let members = 0;
+    for (const member of SEED_MEMBERS) {
+      const row = await ctx.db
+        .query("alumni")
+        .filter((q) => q.eq(q.field("email"), member.email))
+        .first();
+      if (!row) continue;
+      await ctx.db.delete(row._id);
+      members += 1;
+    }
+
+    return { removed, members };
   },
 });
 
+/**
+ * One-off: removes the seed posts that were written under the association's
+ * own addresses, before the seed moved to named members.
+ *
+ * MATCHED ON BOTH AUTHOR AND BODY, which is the whole point. Sweeping by
+ * author alone would delete a real post the moment an office bearer signed in
+ * and wrote one; sweeping by body alone would be fine today and wrong the
+ * first time somebody quoted it. Both must match, so this can only ever hit
+ * the five rows it was written for.
+ *
+ *   npx convex run feed:removeLegacySeedPosts
+ */
+const LEGACY_SEED_AUTHORS = [
+  "alumni@ritrjpm.ac.in",
+  "pro.alumni@ritrjpm.ac.in",
+  "race@ritrjpm.ac.in",
+];
+
+const LEGACY_SEED_OPENERS = [
+  "The alumni portal is open.",
+  "A note on referrals, because it is the thing we are asked for most.",
+  "RACE is the entrepreneurs' corner of the portal, and it works in both directions.",
+  "Which month suits most people for the next reunion?",
+  "The gallery now holds the convocation albums, and it is thinner than it should be.",
+];
+
+export const removeLegacySeedPosts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const posts = await ctx.db.query("posts").collect();
+
+    let removed = 0;
+    const kept: string[] = [];
+
+    for (const post of posts) {
+      const byAssociation = LEGACY_SEED_AUTHORS.includes(post.authorEmail.toLowerCase());
+      const looksSeeded = LEGACY_SEED_OPENERS.some((opener) =>
+        post.body.startsWith(opener),
+      );
+      if (!byAssociation || !looksSeeded) {
+        kept.push(post.authorEmail);
+        continue;
+      }
+
+      // Its poll, votes, likes and comments go with it, exactly as in
+      // removeSeededPosts -- an orphaned question row would still be counted.
+      const question = await ctx.db
+        .query("questions")
+        .withIndex("by_post", (q) => q.eq("postId", post._id))
+        .first();
+      if (question) {
+        const votes = await ctx.db
+          .query("questionAnswers")
+          .withIndex("by_question", (q) => q.eq("questionId", question._id))
+          .collect();
+        for (const vote of votes) await ctx.db.delete(vote._id);
+        await ctx.db.delete(question._id);
+      }
+
+      const likes = await ctx.db
+        .query("postLikes")
+        .withIndex("by_post", (q) => q.eq("postId", post._id))
+        .collect();
+      for (const like of likes) await ctx.db.delete(like._id);
+
+      const comments = await ctx.db
+        .query("postComments")
+        .withIndex("by_post", (q) => q.eq("postId", post._id))
+        .collect();
+      for (const comment of comments) await ctx.db.delete(comment._id);
+
+      await ctx.db.delete(post._id);
+      removed += 1;
+    }
+
+    return { removed, kept: kept.length };
+  },
+});

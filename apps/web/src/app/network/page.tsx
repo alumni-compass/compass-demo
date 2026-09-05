@@ -534,7 +534,7 @@ function NetworkPanels() {
   if (network === undefined) {
     return (
       <>
-        <div className="grid grid-cols-3 gap-6 border-y border-line bg-surface px-6 py-8">
+        <div className="grid grid-cols-3 gap-6 border-y border-line bg-surface px-7 py-9">
           {["Connections", "Requests", "Sent"].map((label) => (
             <Stat key={label} value="—" label={label} />
           ))}
@@ -557,14 +557,14 @@ function NetworkPanels() {
   return (
     <>
       <div className="rounded-card border border-line bg-surface shadow-card">
-        <div className="grid grid-cols-3 gap-6 p-6 sm:p-7">
+        <div className="grid grid-cols-3 gap-6 p-7 sm:p-9">
           <Stat value={network.counts.connections} label="Connections" />
           <Stat value={network.counts.incoming} label="Waiting on you" />
           <Stat value={network.counts.outgoing} label="Waiting on them" />
         </div>
       </div>
 
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-4">
+      <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
         <TabBar
           tabs={tabs}
           active={active}
@@ -576,7 +576,7 @@ function NetworkPanels() {
         </Button>
       </div>
 
-      <div className="mt-6">
+      <div className="mt-8">
         {/* Search sits in the same tab strip as the requests, so finding
             somebody and answering the person who found you are one page. */}
         {active === "find" ? <FindPeople /> : null}
@@ -616,7 +616,7 @@ export default function NetworkPage() {
       </PageHeader>
 
       <Shell>
-        <section className="py-16 sm:py-20">
+        <section className="py-14 sm:py-20">
           <AuthLoading>
             <LoadingRows rows={5} />
           </AuthLoading>

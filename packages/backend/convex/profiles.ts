@@ -204,6 +204,7 @@ export const byEmail = query({
       locationLng: row.locationLng ?? null,
       locationUpdatedAt: row.locationUpdatedAt ?? null,
       locationSource: row.locationSource ?? null,
+      avatarUrl: row.avatarUrl ?? null,
     };
   },
 });
@@ -728,5 +729,102 @@ export const applyTypedCentroid = internalMutation({
       ...(args.region ? { region: args.region } : {}),
     });
     return { saved: true, reason: undefined as string | undefined };
+  },
+});
+
+/* ------------------------------------------------------------------ */
+/* The profile photograph                                              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Uploading a photograph, in three steps.
+ *
+ * WHY THREE. Convex mutations carry arguments, not file bodies, so a photograph
+ * cannot be passed to one. The supported shape is: ask for a short-lived upload
+ * URL, POST the bytes straight to it from the browser, then hand the resulting
+ * storage id back. The bytes never pass through a mutation, which is what keeps
+ * a five-megabyte photograph from becoming a five-megabyte function argument.
+ *
+ * WHY IT WRITES `avatarUrl` RATHER THAN RESOLVING ON READ. Every surface that
+ * shows a face — the feed, the directory, the rail card, a comment — would
+ * otherwise need a storage lookup per author on every read. Resolving once at
+ * write time and storing the URL keeps all of those reads unchanged: the feed
+ * already reads `profile.avatarUrl`, so a new photograph appears on every past
+ * post the moment it is saved, with no change to any query.
+ *
+ * The URL a signed upload produces is stable for the life of the file, so the
+ * only thing that invalidates it is deleting the file — which is exactly what
+ * `setAvatar` does to the *previous* photograph, and nothing else.
+ */
+export const generateAvatarUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const email = await requireEmail(ctx);
+    if (!email) throw new ConvexError("Sign in to change your photograph.");
+    // Signed, single-use and short-lived. Handing one out is not yet a write:
+    // nothing is attached to the profile until setAvatar is called.
+    return await ctx.storage.generateUploadUrl();
+  },
+});
+
+/**
+ * Attaches an uploaded file to the member's own profile.
+ *
+ * Ownership is the whole security story here: the storage id came from an
+ * upload URL this member was given, and it is written only to the row matching
+ * their own session email. There is no argument naming whose profile to change.
+ */
+export const setAvatar = mutation({
+  args: { storageId: v.id("_storage") },
+  handler: async (ctx, { storageId }) => {
+    const email = await requireEmail(ctx);
+    if (!email) throw new ConvexError("Sign in to change your photograph.");
+
+    const row = await findByEmail(ctx, email);
+    if (!row) {
+      throw new ConvexError(
+        "Fill in your details before adding a photograph, so the picture has a name to sit beside.",
+      );
+    }
+
+    const url = await ctx.storage.getUrl(storageId);
+    if (!url) {
+      // The upload did not land, or the file was already swept. Better to say
+      // so than to write a URL that resolves to nothing on every post.
+      throw new ConvexError("That upload did not finish. Try the photograph again.");
+    }
+
+    const previous = row.avatarStorageId;
+    await ctx.db.patch(row._id, { avatarUrl: url, avatarStorageId: storageId });
+
+    // Only after the new one is safely attached, and never a file we did not
+    // upload — a provider avatar has no storage id and so cannot be deleted.
+    if (previous && previous !== storageId) {
+      await ctx.storage.delete(previous);
+    }
+
+    return { avatarUrl: url };
+  },
+});
+
+/**
+ * Takes the photograph off, falling back to the monogram.
+ *
+ * The file is deleted rather than orphaned, but only when we uploaded it.
+ */
+export const removeAvatar = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const email = await requireEmail(ctx);
+    if (!email) throw new ConvexError("Sign in to change your photograph.");
+
+    const row = await findByEmail(ctx, email);
+    if (!row) return { removed: false };
+
+    const previous = row.avatarStorageId;
+    await ctx.db.patch(row._id, { avatarUrl: undefined, avatarStorageId: undefined });
+    if (previous) await ctx.storage.delete(previous);
+
+    return { removed: true };
   },
 });

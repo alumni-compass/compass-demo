@@ -354,16 +354,36 @@ export function Pill({
 }
 
 /** Verified badge — module 1's alumni verification, surfaced everywhere. */
+/**
+ * The verified mark: the tick, and nothing else.
+ *
+ * It used to carry the word "Verified" beside the badge, which meant every
+ * name in a list was followed by a nine-character label repeating what the
+ * badge already said. A tick is the convention on every network people
+ * already use, and it reads at a glance in a way a word next to a name does
+ * not. The meaning lives in the tooltip and the accessible name, so nothing
+ * is lost for a screen reader or for somebody who does not know the
+ * convention.
+ */
 export function VerifiedMark() {
   return (
     <span
       title="Verified alumnus"
-      className="font-mono inline-flex items-center gap-1 text-[0.7rem] uppercase tracking-[0.1em] text-jade"
+      role="img"
+      aria-label="Verified alumnus"
+      className="inline-flex shrink-0 text-jade"
     >
-      <svg viewBox="0 0 12 12" className="size-3 fill-current" aria-hidden>
+      <svg viewBox="0 0 12 12" className="size-[1.05rem] fill-current" aria-hidden>
         <path d="M6 0l1.6 1.2 2-.2.6 1.9 1.7 1.1-.9 1.8.3 2-1.9.6-1.2 1.6L6 11.2 4.2 12l-1.2-1.6-1.9-.6.3-2L.5 6l1.7-1.1.6-1.9 2 .2z" />
+        <path
+          d="M4.1 6.1l1.35 1.35L8 4.8"
+          fill="none"
+          stroke="#F7F5F0"
+          strokeWidth="1.3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
       </svg>
-      Verified
     </span>
   );
 }

@@ -11,6 +11,7 @@ import {
 import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 
+import AvatarPicker from "@/components/avatar-picker";
 import ConnectedAccounts from "@/components/connected-accounts";
 import {
   type FormEvent,
@@ -715,6 +716,14 @@ function ProfileEditor({
           record — and no one else can open yours or reverse a field you have
           marked private.
         </p>
+
+        {/* ---- Your face, saved on choice rather than on submit --------- */}
+        <div className="mb-10 border border-line bg-white p-5 sm:p-6">
+          <AvatarPicker
+            name={saved?.name || name || sessionEmail}
+            currentUrl={saved?.avatarUrl ?? null}
+          />
+        </div>
 
         {/* ---- Record status. Read-only on purpose. --------------------- */}
         <div className="mb-10 grid gap-px border border-line bg-line sm:grid-cols-3">

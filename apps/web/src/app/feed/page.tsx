@@ -13,20 +13,14 @@ import type { ReactNode } from "react";
 
 import Composer from "@/components/feed/composer";
 import PostCard from "@/components/feed/post-card";
-import { Avatar, Button } from "@/components/kit";
+import { Avatar, Button, VerifiedMark } from "@/components/kit";
 import { RITAA } from "@/lib/site";
 
 /**
  * The feed — where a member lands after signing in.
  *
- * NO IDENTITY CARD IN THE RAIL, and that is the change worth explaining. It
- * used to open with a card showing your own name, batch and photograph, which
- * is the one thing on the page you already know. Facebook does not do it and
- * LinkedIn only does it because it is selling you your own profile views. The
- * rail's job is to get you somewhere, so it is now purely destinations — the
- * places with something waiting for you, each carrying its live count.
- *
- * TWO RAILS, TWO JOBS. Left: where to go, with counts, so the page tells you
+ * TWO RAILS, TWO JOBS. Left: who you are and where to go — the card is the
+ * anchor and the destinations carry their live counts, so the rail tells you
  * what has happened since you were last here. Right: what the association is
  * doing and who you have not met — a digest, not a duty, which is why it is the
  * one that drops first on a narrow screen.
@@ -129,6 +123,105 @@ function RailLink({
         <span className="count-badge">{count > 9 ? "9+" : count}</span>
       ) : null}
     </Link>
+  );
+}
+
+/**
+ * Who you are, at the top of the rail.
+ *
+ * The photograph and the batch line are the anchor: on a page of other
+ * people's posts, the card is what says whose feed this is and gives one
+ * click back to your own record. It reads its own query rather than taking
+ * props, so it updates the moment a new photograph is saved on /profile.
+ */
+function IdentityCard() {
+  const me = useQuery(api.profiles.byEmail);
+  const status = useQuery(api.profiles.completeness);
+
+  if (me === undefined) {
+    return <div className="h-52 animate-pulse rounded-[14px] bg-surface-sunk" />;
+  }
+
+  if (me === null) {
+    return (
+      <div className="rounded-[14px] bg-surface p-5 shadow-card">
+        <h2 className="font-display text-[1rem] font-medium text-ink">
+          You are not in the directory yet
+        </h2>
+        <p className="mt-2 text-[0.875rem] leading-relaxed text-slate-ink">
+          Your posts carry your name once you fill in your details, and it is
+          what makes you findable to the batch below you.
+        </p>
+        <div className="mt-4">
+          <Button href="/welcome" size="sm">
+            Fill in your details
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const work = [me.designation, me.company].filter(Boolean).join(" at ");
+
+  return (
+    <div className="overflow-hidden rounded-[14px] bg-surface shadow-card">
+      {/* A band of the institutional weave, so the card reads as a membership
+          card rather than a profile widget. */}
+      <div className="ink-weave h-16" />
+      <div className="-mt-9 px-5 pb-5">
+        <Link href="/profile" className="inline-block">
+          <span className="block rounded-full ring-4 ring-surface">
+            <Avatar name={me.name} src={me.avatarUrl ?? null} size="lg" />
+          </span>
+        </Link>
+
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          <Link
+            href="/profile"
+            className="font-display text-[1.15rem] font-medium leading-tight text-ink transition-colors hover:text-maroon"
+          >
+            {me.name}
+          </Link>
+          {me.verified ? <VerifiedMark /> : null}
+        </div>
+
+        {[me.batch ? `Batch of ${me.batch}` : null, me.department].filter(Boolean)
+          .length > 0 ? (
+          <p className="mt-1 text-[0.875rem] leading-snug text-slate-ink">
+            {[me.batch ? `Batch of ${me.batch}` : null, me.department]
+              .filter(Boolean)
+              .join(" · ")}
+          </p>
+        ) : null}
+        {work ? (
+          <p className="text-[0.875rem] leading-snug text-slate-ink">{work}</p>
+        ) : null}
+        {me.location ? (
+          <p className="mt-1 text-[0.8125rem] leading-snug text-slate-soft">
+            {me.location}
+          </p>
+        ) : null}
+
+        {status && !status.complete ? (
+          <Link
+            href="/welcome"
+            className="mt-4 flex min-h-11 items-center justify-between rounded-[10px] border border-brass/40 bg-bone px-4 text-[0.875rem] font-medium text-brass-ink transition-colors hover:border-brass"
+          >
+            <span>Finish your details</span>
+            <span className="font-mono tabular-nums">
+              {status.answered}/{status.total}
+            </span>
+          </Link>
+        ) : (
+          <Link
+            href="/profile"
+            className="mt-4 flex min-h-11 items-center justify-center rounded-[10px] border border-line bg-bone px-4 text-[0.875rem] font-medium text-slate-ink transition-colors hover:border-line-strong hover:text-ink"
+          >
+            Edit your profile
+          </Link>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -393,7 +486,7 @@ export default function FeedPage() {
   const reduce = useReducedMotion();
 
   return (
-    <div className="mx-auto w-full max-w-[1320px] px-5 py-6 sm:px-8 sm:py-8">
+    <div className="mx-auto w-full max-w-[1320px] px-5 py-8 sm:px-8 sm:py-11">
       <AuthLoading>
         <div className="h-72 animate-pulse rounded-[14px] bg-surface-sunk" />
       </AuthLoading>
@@ -421,17 +514,20 @@ export default function FeedPage() {
       </Unauthenticated>
 
       <Authenticated>
-        <div className="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_19rem] lg:items-start">
+        <div className="grid gap-7 lg:grid-cols-[17rem_minmax(0,1fr)_19rem] lg:items-start xl:gap-8">
           <motion.aside
             className="hidden md:block lg:sticky lg:top-20"
             initial={reduce ? { opacity: 0 } : { opacity: 0, x: -8 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: reduce ? 0.01 : 0.35, ease: [0.22, 1, 0.36, 1] }}
           >
-            <Rail />
+            <div className="space-y-5">
+              <IdentityCard />
+              <Rail />
+            </div>
           </motion.aside>
 
-          <div className="min-w-0 space-y-5">
+          <div className="min-w-0 space-y-6">
             {/* On a phone the rails are gone, so the destinations ride along
                 the top of the reading column instead of disappearing. */}
             <div className="-mx-5 overflow-x-auto px-5 md:hidden">

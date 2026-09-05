@@ -216,6 +216,14 @@ export const createCommunity = mutation({
       postCount: 0,
       archived: false,
       createdAt: now,
+      /*
+       * Filed, not opened. The association reviews a new room before it
+       * appears in the list or accepts a single post, because a community is
+       * a space that carries the institution's name -- and the cost of
+       * reviewing one is a few seconds, while the cost of not reviewing one
+       * is discovering it after it has been used.
+       */
+      status: "pending",
     });
 
     await ctx.db.insert("communityMembers", {
@@ -228,9 +236,48 @@ export const createCommunity = mutation({
       decidedByEmail: email,
     });
 
-    return { communityId, slug };
+    // The creator is an admin from the moment they ask, so the room has an
+    // owner waiting for it -- but `status` keeps it out of sight until the
+    // association says yes.
+    return { communityId, slug, status: "pending" as const };
   },
 });
+
+/* ------------------------------------------------------------------ */
+/* The association's approval                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Whether a community is cleared to be seen and posted in.
+ *
+ * A row with no `status` predates the review gate and is approved: see the
+ * note on the schema field. Everything created since carries an explicit
+ * value, so this is the one place that decision is made.
+ */
+function isApproved(community: Doc<"communities">) {
+  return (community.status ?? "approved") === "approved";
+}
+
+/** The state a member should be told about, never inferred in the page. */
+function reviewStateOf(community: Doc<"communities">) {
+  return (community.status ?? "approved") as "pending" | "approved" | "rejected";
+}
+
+/**
+ * The portal-wide admin check, kept local to avoid a cycle.
+ *
+ * `access.ts` imports nothing from here and this imports nothing from there;
+ * the roles table is read directly instead, which is the same read
+ * `access.requireRole` does.
+ */
+async function isPortalAdmin(ctx: QueryCtx | MutationCtx, email: string | null) {
+  if (!email) return false;
+  const row = await ctx.db
+    .query("memberRoles")
+    .withIndex("by_email", (q) => q.eq("email", normalise(email)))
+    .first();
+  return row?.role === "admin";
+}
 
 /* ------------------------------------------------------------------ */
 /* Joining                                                            */
@@ -263,6 +310,15 @@ export const requestToJoin = mutation({
     if (!community) throw new ConvexError("That community no longer exists.");
     if (community.archived) {
       throw new ConvexError("That community has been archived.");
+    }
+    if (!isApproved(community)) {
+      // Reached by way of a shared link, almost always: the room is not in any
+      // list yet, so the only way to arrive here is to have been sent the URL.
+      throw new ConvexError(
+        reviewStateOf(community) === "pending"
+          ? "That community is still waiting for the association to approve it. Try again once it is open."
+          : "That community was not approved by the association.",
+      );
     }
 
     const existing = await membershipOf(ctx, args.communityId, email);
@@ -517,6 +573,13 @@ function communityCard(
     createdByName: creatorName,
     /** The caller's own standing, so the card renders the right button. */
     standing,
+    /*
+     * Where the association's review has got to. Every card carries it so the
+     * page never has to work it out: a room the member created and is waiting
+     * on renders as waiting, and everything else renders as it always did.
+     */
+    state: reviewStateOf(row),
+    reviewNote: row.reviewNote ?? null,
   };
 }
 
@@ -533,8 +596,21 @@ export const listCommunities = query({
     const identity = await ctx.auth.getUserIdentity();
     const me = identity?.email ? normalise(identity.email) : null;
 
-    const rows = (await ctx.db.query("communities").withIndex("by_created").order("desc").collect())
-      .filter((row) => !row.archived);
+    /*
+     * Approved rooms, plus the ones this member asked for themselves.
+     *
+     * Somebody who has just filed a request should see it sitting there
+     * awaiting review rather than watch it vanish -- a form that appears to do
+     * nothing is a form people fill in twice. Nobody else sees it until the
+     * association says yes.
+     */
+    const rows = (
+      await ctx.db.query("communities").withIndex("by_created").order("desc").collect()
+    ).filter(
+      (row) =>
+        !row.archived &&
+        (isApproved(row) || (me !== null && normalise(row.createdByEmail) === me)),
+    );
 
     const standings = new Map<string, Standing>();
     if (me) {
@@ -622,8 +698,19 @@ export const communityBySlug = query({
       canModerate: canModerate(standing),
       /** Asked only by an approval community; see requestToJoin. */
       joinQuestions: community.visibility === "approval" ? questions : [],
+      /*
+       * The association's review, and the two things that follow from it.
+       *
+       * `canPost` now carries the approval as well as the membership, so a
+       * creator looking at their own unapproved room sees the composer
+       * withheld rather than a composer whose every submission is refused by
+       * the server.
+       */
+      state: reviewStateOf(community),
+      reviewNote: community.reviewNote ?? null,
       /** True once the caller may read and write the feed. */
-      canPost: standing === "member" || canModerate(standing),
+      canPost:
+        isApproved(community) && (standing === "member" || canModerate(standing)),
     };
   },
 });
@@ -802,5 +889,112 @@ export const moderationCount = query({
     );
 
     return counts.reduce((sum, n) => sum + n, 0);
+  },
+});
+
+/* ------------------------------------------------------------------ */
+/* The association's review queue                                      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Communities waiting for the association to decide, newest request first.
+ *
+ * SOFT REFUSAL, NOT A THROW. A query that throws takes down the whole admin
+ * route for anybody who is not an admin, including the member who followed a
+ * bookmark. Returning `authorized: false` lets the page say "this panel is not
+ * yours" while the rest of it carries on working — the same pattern the other
+ * admin panels here use.
+ */
+export const pendingCommunities = query({
+  args: {},
+  handler: async (ctx) => {
+    const identity = await ctx.auth.getUserIdentity();
+    const me = identity?.email ? normalise(identity.email) : null;
+    if (!(await isPortalAdmin(ctx, me))) {
+      return { authorized: false as const, rows: [], counts: { pending: 0, rejected: 0 } };
+    }
+
+    const all = await ctx.db.query("communities").withIndex("by_created").order("desc").collect();
+    const profiles = await profileIndex(ctx);
+
+    const decorate = (row: Doc<"communities">) => {
+      const creator = profiles.byEmail.get(normalise(row.createdByEmail));
+      return {
+        _id: row._id,
+        name: row.name,
+        slug: row.slug,
+        tagline: row.tagline,
+        description: row.description,
+        visibility: row.visibility,
+        scopeBatch: row.scopeBatch ?? null,
+        scopeDepartment: row.scopeDepartment ?? null,
+        createdAt: row.createdAt,
+        state: reviewStateOf(row),
+        reviewNote: row.reviewNote ?? null,
+        reviewedAt: row.reviewedAt ?? null,
+        /* Who is asking, which is most of the decision: an admin approving a
+           room wants to know the requester is a real, verified member. */
+        creator: {
+          email: row.createdByEmail,
+          name: creator?.name ?? fallbackLabel(row.createdByEmail),
+          batch: creator?.batch ?? null,
+          department: creator?.department ?? null,
+          verified: creator?.verified ?? false,
+          avatarUrl: creator?.avatarUrl ?? null,
+        },
+      };
+    };
+
+    const pending = all.filter((row) => reviewStateOf(row) === "pending" && !row.archived);
+    const rejected = all.filter((row) => reviewStateOf(row) === "rejected");
+
+    return {
+      authorized: true as const,
+      // Pending first and in full; the refused ones follow, so a decision can
+      // be reversed without hunting through the database for the row.
+      rows: [...pending, ...rejected].map(decorate),
+      counts: { pending: pending.length, rejected: rejected.length },
+    };
+  },
+});
+
+/**
+ * Approves or refuses a community, and says why when refusing.
+ *
+ * A refusal does not delete the row. The member who asked should be able to
+ * read the reason on the page where they asked, and an association that
+ * refuses a request should leave a record that it did — deleting the evidence
+ * of a decision is not the same as making one.
+ */
+export const reviewCommunity = mutation({
+  args: {
+    communityId: v.id("communities"),
+    decision: v.union(v.literal("approved"), v.literal("rejected")),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const email = await requireEmail(ctx);
+    if (!(await isPortalAdmin(ctx, email))) {
+      throw new ConvexError("Only an association admin can approve a community.");
+    }
+
+    const community = await ctx.db.get(args.communityId);
+    if (!community) throw new ConvexError("That community no longer exists.");
+
+    const note = (args.note ?? "").trim();
+    if (args.decision === "rejected" && note.length === 0) {
+      // A refusal without a reason is one the member cannot act on, and one the
+      // next admin cannot understand either.
+      throw new ConvexError("Say why it was turned down — the member is shown this.");
+    }
+
+    await ctx.db.patch(args.communityId, {
+      status: args.decision,
+      reviewedAt: Date.now(),
+      reviewedByEmail: email,
+      reviewNote: args.decision === "rejected" ? note : undefined,
+    });
+
+    return { name: community.name, decision: args.decision };
   },
 });
