@@ -109,12 +109,14 @@ function FieldRow({
   }
 
   return (
-    <div className="border-t border-line py-4 first:border-t-0">
+    <div className="rounded-[12px] border border-line bg-bone/40 p-4 transition-colors hover:border-line-strong hover:bg-bone">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-[0.7rem] uppercase tracking-[0.1em] text-slate-soft">
+        <span className="font-mono text-[0.75rem] text-slate-soft">
           {field.key}
         </span>
-        <span className="text-[0.95rem] text-ink">{field.label}</span>
+        <span className="text-[1.0625rem] font-medium text-ink">
+          {field.label}
+        </span>
         {field.required ? <Pill tone="maroon">Required</Pill> : <Pill>Optional</Pill>}
         {field.locked ? <Pill tone="brass">Locked</Pill> : null}
         {field.active ? null : <Pill tone="quiet">Retired</Pill>}
@@ -151,7 +153,7 @@ function FieldRow({
         </span>
       </div>
 
-      <p className="mt-1 text-[0.8rem] leading-snug text-slate-ink">
+      <p className="mt-1.5 text-[0.875rem] leading-snug text-slate-ink">
         {KIND_COPY[field.kind] ?? field.kind}
         {field.kind === "select" ? ` · ${field.options.length} options` : ""}
         {field.help ? ` — ${field.help}` : ""}
@@ -305,9 +307,11 @@ function QuestionRow({
   }
 
   return (
-    <div className="border-t border-line py-4 first:border-t-0">
+    <div className="rounded-[12px] border border-line bg-bone/40 p-4 transition-colors hover:border-line-strong hover:bg-bone">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-[0.95rem] text-ink">{question.prompt}</span>
+        <span className="text-[1.0625rem] font-medium text-ink">
+          {question.prompt}
+        </span>
         {question.required ? (
           <Pill tone="maroon">Required</Pill>
         ) : (
@@ -640,7 +644,7 @@ export default function DetailsFormAdmin() {
             />
           </div>
         ) : (
-          <div className="mt-5">
+          <div className="mt-5 space-y-2.5">
             {fields.map((field, index) => (
               <FieldRow
                 key={field.key}
@@ -673,7 +677,7 @@ export default function DetailsFormAdmin() {
             />
           </div>
         ) : (
-          <div className="mt-5">
+          <div className="mt-5 space-y-2.5">
             {questions.map((question, index) => (
               <QuestionRow
                 key={String(question._id)}

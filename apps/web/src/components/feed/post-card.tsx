@@ -336,7 +336,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
   return (
     <motion.article
       layout={!reduce}
-      className="overflow-hidden rounded-card border border-line bg-surface shadow-card"
+      className="overflow-hidden rounded-[14px] bg-surface shadow-card"
     >
       <div className="flex items-start justify-between gap-3 p-5 pb-3">
         <AuthorLine

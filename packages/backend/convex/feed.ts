@@ -2,6 +2,7 @@ import { ConvexError, v } from "convex/values";
 
 import type { Doc, Id } from "./_generated/dataModel";
 import {
+  internalMutation,
   mutation,
   type MutationCtx,
   query,
@@ -862,3 +863,158 @@ export const feedStats = query({
     };
   },
 });
+
+/* ------------------------------------------------------------------ */
+/* Seeding                                                             */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Five posts, so the feed is not an empty room on the first visit.
+ *
+ * WHY SEED AT ALL. An empty feed is the worst first impression a network can
+ * make: it reads as abandoned rather than new, and the member who might have
+ * posted first decides not to. Five is enough to show what the surface is for
+ * — an opening, a milestone, a question, an event, a venture — without
+ * pretending to a volume of activity that does not exist.
+ *
+ * WHAT IS AND IS NOT INVENTED. The authors are the association's real office
+ * bearers from the brief, and the subjects are the things this portal is built
+ * around. Nothing here claims a fact the association has not stated: no dates
+ * that were not given, no names of members who do not exist, no numbers. Where
+ * a post would need a specific fact, it asks a question instead.
+ *
+ * IDEMPOTENT. Every seeded post carries a marker in `hiddenReason`... no — it
+ * is keyed on the body instead, because `hiddenReason` is shown to members.
+ * Running this twice adds nothing; deleting one and re-running restores it.
+ *
+ *   npx convex run feed:seedDefaultPosts
+ *   npx convex run feed:removeSeededPosts     (to take them out again)
+ */
+
+/** The exact bodies, which is also how a re-run knows what already exists. */
+const SEED_POSTS: Array<{
+  author: string;
+  body: string;
+  imageUrls?: string[];
+  poll?: string[];
+}> = [
+  {
+    author: "alumni@ritrjpm.ac.in",
+    body: "The alumni portal is open.\n\nEverything the association has been doing on WhatsApp and email now has a place: a directory you can actually search, a way to ask another graduate to connect, and this feed, which every verified member reads.\n\nFill in your details when you get a minute — it is what makes you findable to the batch below you looking for a referral.",
+  },
+  {
+    author: "pro.alumni@ritrjpm.ac.in",
+    body: "A note on referrals, because it is the thing we are asked for most.\n\nIf your company is hiring, put it on the careers board rather than in a private message. A post there reaches every batch at once, and you can mark whether you are willing to refer — which is the part that actually changes someone's chances.",
+  },
+  {
+    author: "race@ritrjpm.ac.in",
+    body: "RACE is the entrepreneurs' corner of the portal, and it works in both directions.\n\nIf you are running something, put up a venture profile and say what you are looking for — a co-founder, a first customer, an introduction. If you are further along, say what you are willing to offer. Both halves are on the same page for a reason.",
+  },
+  {
+    author: "alumni@ritrjpm.ac.in",
+    body: "Which month suits most people for the next reunion?\n\nWe would rather ask than guess. One vote each, and the result is visible to everyone as it comes in.",
+    poll: ["January", "April", "August", "December"],
+  },
+  {
+    author: "pro.alumni@ritrjpm.ac.in",
+    body: "The gallery now holds the convocation albums, and it is thinner than it should be.\n\nIf you have photographs from your own year — convocation, a department day, a hostel corridor at two in the morning — send them to the office and we will add them. A photograph nobody has seen in fifteen years is worth more here than anywhere on your phone.",
+    imageUrls: ["/campus-4.jpg", "/campus-6.jpg"],
+  },
+];
+
+export const seedDefaultPosts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const existing = await ctx.db.query("posts").collect();
+    const bodies = new Set(existing.map((post) => post.body));
+
+    let added = 0;
+    const now = Date.now();
+
+    for (const [index, seed] of SEED_POSTS.entries()) {
+      if (bodies.has(seed.body)) continue;
+
+      /*
+       * Spaced an hour apart, oldest first, so the feed has a shape rather
+       * than five posts sharing one timestamp. The newest sits about an hour
+       * ago, not in the future — a post dated ahead of now reads as broken.
+       */
+      const createdAt = now - (SEED_POSTS.length - index) * 60 * 60 * 1000;
+
+      const postId = await ctx.db.insert("posts", {
+        authorEmail: seed.author,
+        body: seed.body,
+        kind: seed.poll ? "poll" : "text",
+        // Local assets, so they resolve wherever the site is served from.
+        imageUrls: seed.imageUrls ?? [],
+        likeCount: 0,
+        commentCount: 0,
+        shareCount: 0,
+        hidden: false,
+        createdAt,
+      });
+
+      if (seed.poll) {
+        await ctx.db.insert("questions", {
+          scope: "poll",
+          postId,
+          prompt: seed.body,
+          kind: "choice",
+          options: seed.poll,
+          required: false,
+          order: 0,
+          active: true,
+          createdByEmail: seed.author,
+          createdAt,
+        });
+      }
+      added += 1;
+    }
+
+    return { added, total: SEED_POSTS.length };
+  },
+});
+
+/** Takes the seeded posts back out, and their polls with them. */
+export const removeSeededPosts = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const bodies = new Set(SEED_POSTS.map((seed) => seed.body));
+    const posts = await ctx.db.query("posts").collect();
+
+    let removed = 0;
+    for (const post of posts) {
+      if (!bodies.has(post.body)) continue;
+
+      const question = await ctx.db
+        .query("questions")
+        .withIndex("by_post", (q) => q.eq("postId", post._id))
+        .first();
+      if (question) {
+        const votes = await ctx.db
+          .query("questionAnswers")
+          .withIndex("by_question", (q) => q.eq("questionId", question._id))
+          .collect();
+        for (const vote of votes) await ctx.db.delete(vote._id);
+        await ctx.db.delete(question._id);
+      }
+
+      const likes = await ctx.db
+        .query("postLikes")
+        .withIndex("by_post", (q) => q.eq("postId", post._id))
+        .collect();
+      for (const like of likes) await ctx.db.delete(like._id);
+
+      const comments = await ctx.db
+        .query("postComments")
+        .withIndex("by_post", (q) => q.eq("postId", post._id))
+        .collect();
+      for (const comment of comments) await ctx.db.delete(comment._id);
+
+      await ctx.db.delete(post._id);
+      removed += 1;
+    }
+    return { removed };
+  },
+});
+

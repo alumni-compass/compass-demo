@@ -134,7 +134,7 @@ export default function VerifyMembers() {
         </div>
       </div>
 
-      <p className="mt-2 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
+      <p className="mt-2 max-w-3xl text-[0.9375rem] leading-[1.6] text-slate-ink">
         Everyone who has signed in, whether or not they have filled in their
         details. The tick beside a member&rsquo;s name across the portal is this
         flag — check their batch and roll number against college records first,
@@ -163,16 +163,18 @@ export default function VerifyMembers() {
         </div>
       ) : (
         <>
-          <ul className="mt-5 divide-y divide-line">
+          <ul className="mt-5 space-y-2.5">
             {data.rows.map((row) => (
               <li
                 key={row.email}
-                className="flex flex-wrap items-center gap-3 py-3"
+                className="flex flex-wrap items-center gap-4 rounded-[12px] border border-line bg-bone/40 p-4 transition-colors hover:border-line-strong hover:bg-bone"
               >
-                <Avatar name={row.name} size="sm" />
+                <Avatar name={row.name} size="md" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-[0.95rem] text-ink">{row.name}</span>
+                    <span className="text-[1.0625rem] font-medium text-ink">
+                      {row.name}
+                    </span>
                     {row.verified ? (
                       <VerifiedMark />
                     ) : (
@@ -182,15 +184,17 @@ export default function VerifyMembers() {
                       <Pill tone="quiet">Never signed in</Pill>
                     ) : null}
                   </div>
-                  <p className="font-mono truncate text-[0.7rem] text-slate-ink">
+                  <p className="font-mono mt-0.5 truncate text-[0.8125rem] text-slate-ink">
                     {row.email}
                   </p>
-                  <p className="text-[0.78rem] leading-snug text-slate-ink">
+                  <p className="mt-1 text-[0.875rem] leading-snug text-slate-ink">
                     {row.hasProfile
                       ? `Batch of ${row.batch} · ${row.department}`
                       : "Signed in, but has not filled in their details yet — there is nothing to check against college records until they do."}
                   </p>
                 </div>
+                {/* The two controls sit together on the right, because they
+                    are the two decisions this row exists to make. */}
                 <label className="sr-only" htmlFor={`role-${row.email}`}>
                   Role for {row.name}
                 </label>
@@ -201,7 +205,7 @@ export default function VerifyMembers() {
                   onChange={(event) =>
                     changeRole(row.email, event.target.value as Role, row.name)
                   }
-                  className="font-mono min-h-9 shrink-0 rounded-control border border-line bg-surface px-2.5 text-[0.7rem] uppercase tracking-[0.08em] text-ink transition-colors hover:border-line-strong focus:border-maroon focus:outline-none disabled:opacity-50"
+                  className="min-h-10 shrink-0 rounded-control border border-line bg-surface px-3 text-[0.875rem] text-ink transition-colors hover:border-line-strong focus:border-maroon focus:outline-none disabled:opacity-50"
                 >
                   <option value="guest">No role</option>
                   <option value="alumni">Alumni</option>

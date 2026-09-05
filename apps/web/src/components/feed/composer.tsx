@@ -114,7 +114,7 @@ export default function Composer() {
     <motion.form
       onSubmit={submit}
       layout={reduce ? false : "position"}
-      className="overflow-hidden rounded-card border border-line bg-surface shadow-card"
+      className="overflow-hidden rounded-[14px] bg-surface shadow-card"
     >
       {/* The brass spine marks the one place on the page that writes. */}
       <div className="flex gap-3.5 border-l-2 border-brass p-5">
