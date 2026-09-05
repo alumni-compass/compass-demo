@@ -82,18 +82,18 @@ function IdentityCard() {
       <div className="-mt-7 px-4 pb-4">
         <Avatar name={me.name} src={me.avatarUrl ?? null} size="lg" />
         <div className="mt-2 flex flex-wrap items-center gap-2">
-          <p className="font-display text-[1.05rem] leading-tight text-ink">
+          <p className="font-display text-[1.15rem] font-medium leading-tight text-ink">
             {me.name}
           </p>
           {me.verified ? <VerifiedMark /> : null}
         </div>
-        <p className="mt-0.5 text-[0.78rem] leading-snug text-slate-ink">
+        <p className="mt-1 text-[0.875rem] leading-snug text-slate-ink">
           {[me.batch ? `Batch of ${me.batch}` : null, me.department]
             .filter(Boolean)
             .join(" · ")}
         </p>
         {me.designation || me.company ? (
-          <p className="text-[0.78rem] leading-snug text-slate-ink">
+          <p className="text-[0.875rem] leading-snug text-slate-ink">
             {[me.designation, me.company].filter(Boolean).join(" at ")}
           </p>
         ) : null}
@@ -101,10 +101,10 @@ function IdentityCard() {
         {status && !status.complete ? (
           <Link
             href="/welcome"
-            className="font-mono mt-3 flex items-center justify-between rounded-control border border-brass/40 bg-bone px-3 py-2 text-[0.65rem] uppercase tracking-[0.1em] text-brass-ink transition-colors hover:border-brass"
+            className="mt-4 flex min-h-11 items-center justify-between rounded-control border border-brass/40 bg-bone px-4 text-[0.875rem] font-medium text-brass-ink transition-colors hover:border-brass"
           >
             <span>Finish your details</span>
-            <span className="tabular-nums">
+            <span className="font-mono tabular-nums">
               {status.answered}/{status.total}
             </span>
           </Link>
@@ -134,7 +134,7 @@ function Shortcuts() {
             <li key={item.href}>
               <Link
                 href={item.href}
-                className="flex min-h-10 items-center justify-between gap-2 rounded-control px-3 text-[0.875rem] text-ink/85 transition-colors hover:bg-bone hover:text-maroon"
+                className="flex min-h-11 items-center justify-between gap-2 rounded-control px-3.5 text-[0.9375rem] text-ink/85 transition-colors hover:bg-bone hover:text-maroon"
               >
                 {item.label}
                 {count !== undefined && count > 0 ? (
@@ -147,7 +147,7 @@ function Shortcuts() {
         <li className="mt-1 border-t border-line pt-1">
           <Link
             href="/directory"
-            className="flex min-h-10 items-center rounded-control px-3 text-[0.875rem] text-ink/85 transition-colors hover:bg-bone hover:text-maroon"
+            className="flex min-h-11 items-center rounded-control px-3.5 text-[0.9375rem] text-ink/85 transition-colors hover:bg-bone hover:text-maroon"
           >
             Directory
           </Link>
@@ -177,8 +177,10 @@ function ThisWeek() {
             key={row.label}
             className="flex items-baseline justify-between gap-3 border-b border-line pb-2 last:border-0 last:pb-0"
           >
-            <dt className="text-[0.82rem] text-slate-ink">{row.label}</dt>
-            <dd className="font-mono text-[0.9rem] tabular-nums text-ink">
+            <dt className="text-[0.875rem] text-slate-ink">{row.label}</dt>
+            {/* Figures stay mono and tabular — a column of numbers is the one
+                place the utility face is doing real work. */}
+            <dd className="font-mono text-[1rem] tabular-nums text-ink">
               {row.value}
             </dd>
           </div>
@@ -203,11 +205,11 @@ function PeopleToKnow() {
             <div className="min-w-0 flex-1">
               <Link
                 href={`/directory/${member.alumniId}`}
-                className="block truncate text-[0.85rem] text-ink transition-colors hover:text-maroon"
+                className="block truncate text-[0.9375rem] text-ink transition-colors hover:text-maroon"
               >
                 {member.name}
               </Link>
-              <p className="truncate text-[0.72rem] leading-snug text-slate-ink">
+              <p className="truncate text-[0.8125rem] leading-snug text-slate-ink">
                 {reason}
               </p>
             </div>
@@ -363,7 +365,7 @@ export default function FeedPage() {
   const reduce = useReducedMotion();
 
   return (
-    <Shell className="py-5 sm:py-7">
+    <div className="mx-auto w-full max-w-[1320px] px-5 py-6 sm:px-8 sm:py-8">
       <AuthLoading>
         <div className="h-64 animate-pulse rounded-card bg-surface-sunk" />
       </AuthLoading>
@@ -389,7 +391,7 @@ export default function FeedPage() {
       </Unauthenticated>
 
       <Authenticated>
-        <div className="grid gap-5 lg:grid-cols-[16rem_minmax(0,1fr)_18rem] lg:items-start">
+        <div className="grid gap-6 lg:grid-cols-[17rem_minmax(0,1fr)_19rem] lg:items-start">
           <motion.aside
             className="hidden space-y-4 md:block lg:sticky lg:top-20"
             initial={reduce ? { opacity: 0 } : { opacity: 0, x: -8 }}
@@ -400,7 +402,7 @@ export default function FeedPage() {
             <Shortcuts />
           </motion.aside>
 
-          <div className="min-w-0 space-y-4">
+          <div className="min-w-0 space-y-5">
             {/* On a phone the rails are gone, so the shortcuts ride along the
                 top of the reading column instead of disappearing. */}
             <div className="-mx-5 overflow-x-auto px-5 md:hidden">
@@ -409,7 +411,7 @@ export default function FeedPage() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="font-mono shrink-0 rounded-chip border border-line bg-surface px-3 py-1.5 text-[0.68rem] uppercase tracking-[0.1em] text-slate-ink"
+                    className="flex min-h-10 shrink-0 items-center rounded-chip border border-line bg-surface px-4 text-[0.875rem] text-slate-ink"
                   >
                     {item.label}
                   </Link>
@@ -439,6 +441,6 @@ export default function FeedPage() {
           </motion.aside>
         </div>
       </Authenticated>
-    </Shell>
+    </div>
   );
 }

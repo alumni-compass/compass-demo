@@ -32,7 +32,7 @@ const MIN_POLL = 2;
 const MAX_POLL = 6;
 
 const CONTROL =
-  "w-full rounded-control border border-line bg-surface px-3 py-2 text-[0.875rem] text-ink transition-colors placeholder:text-slate-soft hover:border-line-strong focus:border-maroon focus:outline-none";
+  "w-full rounded-control border border-line bg-surface px-4 py-2.5 text-[0.9375rem] text-ink transition-colors placeholder:text-slate-soft hover:border-line-strong focus:border-maroon focus:outline-none";
 
 type Mode = "photo" | "video" | "poll" | null;
 
@@ -40,7 +40,7 @@ type Mode = "photo" | "video" | "poll" | null;
 function ModeIcon({ mode }: { mode: Exclude<Mode, null> }) {
   if (mode === "photo") {
     return (
-      <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
+      <svg viewBox="0 0 16 16" className="size-[1.15rem]" fill="none" aria-hidden>
         <rect x="1.5" y="3" width="13" height="10" rx="1.5" stroke="currentColor" />
         <circle cx="5.5" cy="6.5" r="1.15" fill="currentColor" />
         <path d="M2.5 12l3.6-3.4 2.4 2.2 2.1-1.9 2.9 3.1" stroke="currentColor" />
@@ -49,14 +49,14 @@ function ModeIcon({ mode }: { mode: Exclude<Mode, null> }) {
   }
   if (mode === "video") {
     return (
-      <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
+      <svg viewBox="0 0 16 16" className="size-[1.15rem]" fill="none" aria-hidden>
         <rect x="1.5" y="3.5" width="9" height="9" rx="1.5" stroke="currentColor" />
         <path d="M10.5 8l4-2.3v4.6L10.5 8z" stroke="currentColor" />
       </svg>
     );
   }
   return (
-    <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
+    <svg viewBox="0 0 16 16" className="size-[1.15rem]" fill="none" aria-hidden>
       <path d="M2.5 4.5h11M2.5 8h7.5M2.5 11.5h4" stroke="currentColor" />
     </svg>
   );
@@ -117,8 +117,8 @@ export default function Composer() {
       className="overflow-hidden rounded-card border border-line bg-surface shadow-card"
     >
       {/* The brass spine marks the one place on the page that writes. */}
-      <div className="flex gap-3 border-l-2 border-brass p-4">
-        <Avatar name={name} src={me?.avatarUrl ?? null} size="sm" />
+      <div className="flex gap-3.5 border-l-2 border-brass p-5">
+        <Avatar name={name} src={me?.avatarUrl ?? null} size="md" />
 
         <div className="min-w-0 flex-1">
           {open ? (
@@ -130,13 +130,13 @@ export default function Composer() {
               onChange={(event) => setBody(event.target.value)}
               placeholder={`What is happening, ${name.split(" ")[0]}?`}
               rows={3}
-              className="w-full resize-y border-0 bg-transparent p-0 text-[0.95rem] leading-relaxed text-ink placeholder:text-slate-soft focus:outline-none"
+              className="w-full resize-y border-0 bg-transparent p-0 text-[1.0625rem] leading-[1.6] text-ink placeholder:text-slate-soft focus:outline-none"
             />
           ) : (
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="flex min-h-10 w-full items-center rounded-chip border border-line bg-bone px-4 text-left text-[0.9rem] text-slate-ink transition-colors hover:border-line-strong hover:bg-bone-deep"
+              className="flex min-h-12 w-full items-center rounded-chip border border-line bg-bone px-5 text-left text-[1rem] text-slate-ink transition-colors hover:border-line-strong hover:bg-bone-deep"
             >
               Share something with the association
             </button>
@@ -162,11 +162,11 @@ export default function Composer() {
                   animate={{ opacity: 1, y: 0 }}
                   exit={reduce ? { opacity: 0 } : { opacity: 0, y: -4 }}
                   transition={{ duration: reduce ? 0.01 : 0.15 }}
-                  className="mx-4 mb-3 space-y-2 rounded-card border border-line bg-bone p-3"
+                  className="mx-5 mb-4 space-y-2.5 rounded-card border border-line bg-bone p-4"
                 >
                   {mode === "photo" ? (
                     <>
-                      <p className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-brass-ink">
+                      <p className="text-[0.875rem] font-medium text-brass-ink">
                         Image links · up to {MAX_IMAGES}
                       </p>
                       {images.map((url, index) => (
@@ -186,12 +186,12 @@ export default function Composer() {
                         <button
                           type="button"
                           onClick={() => setImages([...images, ""])}
-                          className="font-mono text-[0.7rem] uppercase tracking-[0.1em] text-maroon hover:text-maroon-deep"
+                          className="text-[0.875rem] font-medium text-maroon hover:text-maroon-deep"
                         >
                           + another image
                         </button>
                       ) : null}
-                      <p className="text-[0.75rem] leading-snug text-slate-ink">
+                      <p className="text-[0.8125rem] leading-relaxed text-slate-ink">
                         Paste the address of an image already online. The portal
                         stores no files.
                       </p>
@@ -200,7 +200,7 @@ export default function Composer() {
 
                   {mode === "video" ? (
                     <>
-                      <p className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-brass-ink">
+                      <p className="text-[0.875rem] font-medium text-brass-ink">
                         Video link
                       </p>
                       <input
@@ -209,7 +209,7 @@ export default function Composer() {
                         placeholder="https://youtube.com/watch?v=… or an mp4 address"
                         onChange={(event) => setVideo(event.target.value)}
                       />
-                      <p className="text-[0.75rem] leading-snug text-slate-ink">
+                      <p className="text-[0.8125rem] leading-relaxed text-slate-ink">
                         A YouTube or Vimeo link plays as an embed. Any other
                         address plays in the browser&rsquo;s own player.
                       </p>
@@ -218,7 +218,7 @@ export default function Composer() {
 
                   {mode === "poll" ? (
                     <>
-                      <p className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-brass-ink">
+                      <p className="text-[0.875rem] font-medium text-brass-ink">
                         Poll options · {MIN_POLL} to {MAX_POLL}
                       </p>
                       {options.map((option, index) => (
@@ -239,7 +239,7 @@ export default function Composer() {
                           <button
                             type="button"
                             onClick={() => setOptions([...options, ""])}
-                            className="font-mono text-[0.7rem] uppercase tracking-[0.1em] text-maroon hover:text-maroon-deep"
+                            className="text-[0.875rem] font-medium text-maroon hover:text-maroon-deep"
                           >
                             + option
                           </button>
@@ -248,13 +248,13 @@ export default function Composer() {
                           <button
                             type="button"
                             onClick={() => setOptions(options.slice(0, -1))}
-                            className="font-mono text-[0.7rem] uppercase tracking-[0.1em] text-slate-ink hover:text-ink"
+                            className="text-[0.875rem] text-slate-ink hover:text-ink"
                           >
                             − option
                           </button>
                         ) : null}
                       </div>
-                      <p className="text-[0.75rem] leading-snug text-slate-ink">
+                      <p className="text-[0.8125rem] leading-relaxed text-slate-ink">
                         Your post becomes the question. One vote per member, and
                         the result is visible to everyone.
                       </p>
@@ -264,14 +264,14 @@ export default function Composer() {
               ) : null}
             </AnimatePresence>
 
-            <div className="flex flex-wrap items-center gap-2 border-t border-line px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2.5 border-t border-line px-5 py-4">
               {(["photo", "video", "poll"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setMode(mode === option ? null : option)}
                   aria-pressed={mode === option}
-                  className={`font-mono inline-flex min-h-9 items-center gap-1.5 rounded-chip border px-3 text-[0.68rem] uppercase tracking-[0.1em] transition-colors ${
+                  className={`inline-flex min-h-10 items-center gap-2 rounded-chip border px-3.5 text-[0.875rem] font-medium capitalize transition-colors ${
                     mode === option
                       ? "border-maroon/40 bg-maroon-tint text-maroon"
                       : "border-line text-slate-ink hover:border-line-strong hover:text-ink"
@@ -285,7 +285,7 @@ export default function Composer() {
               <span className="ml-auto flex items-center gap-3">
                 {remaining < 500 ? (
                   <span
-                    className={`font-mono text-[0.68rem] tabular-nums ${
+                    className={`font-mono text-[0.8125rem] tabular-nums ${
                       remaining < 0 ? "text-maroon" : "text-slate-ink"
                     }`}
                   >
@@ -295,7 +295,7 @@ export default function Composer() {
                 <button
                   type="button"
                   onClick={reset}
-                  className="font-mono min-h-9 rounded-control px-2.5 text-[0.68rem] uppercase tracking-[0.1em] text-slate-ink transition-colors hover:text-ink"
+                  className="min-h-10 rounded-control px-3 text-[0.9375rem] text-slate-ink transition-colors hover:text-ink"
                 >
                   Cancel
                 </button>
@@ -303,7 +303,7 @@ export default function Composer() {
                   type="submit"
                   disabled={!canPost}
                   whileTap={reduce || !canPost ? undefined : { scale: 0.97 }}
-                  className="font-mono inline-flex min-h-9 items-center rounded-control bg-maroon px-4 text-[0.68rem] uppercase tracking-[0.12em] text-bone shadow-panel transition-colors hover:bg-maroon-deep disabled:cursor-not-allowed disabled:opacity-45"
+                  className="inline-flex min-h-10 items-center rounded-control bg-maroon px-5 text-[0.9375rem] font-medium text-bone shadow-panel transition-colors hover:bg-maroon-deep disabled:cursor-not-allowed disabled:opacity-45"
                 >
                   {busy ? "Posting…" : "Post"}
                 </motion.button>

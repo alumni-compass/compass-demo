@@ -85,7 +85,7 @@ function subtitle(author: Author) {
 
 function Seal({ active }: { active: boolean }) {
   return (
-    <svg viewBox="0 0 16 16" className="size-4" aria-hidden>
+    <svg viewBox="0 0 16 16" className="size-5" aria-hidden>
       {/* A notched disc: a wax seal, not a heart and not a thumb. */}
       <path
         d="M8 1.2l1.5 1.05 1.8-.35.75 1.68 1.6.9-.35 1.8.9 1.6-1.35 1.24-.35 1.8-1.82.15L8.6 14.6 8 14.8l-.6-.2-1.68-.82-1.82-.15-.35-1.8L2.2 10.6l.9-1.6-.35-1.8 1.6-.9.75-1.68 1.8.35L8 1.2z"
@@ -125,7 +125,7 @@ function ActionButton({
       aria-pressed={active}
       aria-label={label}
       whileTap={reduce ? undefined : { scale: 0.96 }}
-      className={`font-mono relative inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-control text-[0.68rem] uppercase tracking-[0.1em] transition-colors ${
+      className={`relative inline-flex min-h-11 flex-1 items-center justify-center gap-2.5 rounded-control text-[0.9375rem] font-medium transition-colors ${
         active
           ? "bg-maroon-tint text-maroon"
           : "text-slate-ink hover:bg-bone hover:text-ink"
@@ -151,7 +151,7 @@ function Comments({ postId }: { postId: Id<"posts"> }) {
   const [busy, setBusy] = useState(false);
 
   return (
-    <div className="border-t border-line bg-bone px-4 py-3">
+    <div className="border-t border-line bg-bone px-5 py-4">
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -169,23 +169,21 @@ function Comments({ postId }: { postId: Id<"posts"> }) {
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
           placeholder="Write a comment"
-          className="min-w-0 flex-1 rounded-chip border border-line bg-surface px-3.5 text-[0.875rem] text-ink placeholder:text-slate-soft focus:border-maroon focus:outline-none"
+          className="min-w-0 flex-1 rounded-chip border border-line bg-surface px-4 py-2.5 text-[0.9375rem] text-ink placeholder:text-slate-soft focus:border-maroon focus:outline-none"
         />
         <button
           type="submit"
           disabled={!draft.trim() || busy}
-          className="font-mono shrink-0 rounded-control px-3 text-[0.68rem] uppercase tracking-[0.1em] text-maroon transition-colors hover:text-maroon-deep disabled:opacity-40"
+          className="shrink-0 rounded-control px-3.5 text-[0.9375rem] font-medium text-maroon transition-colors hover:text-maroon-deep disabled:opacity-40"
         >
           {busy ? "…" : "Reply"}
         </button>
       </form>
 
       {comments === undefined ? (
-        <p className="font-mono mt-3 text-[0.68rem] uppercase tracking-[0.1em] text-slate-soft">
-          Loading
-        </p>
+        <p className="mt-4 text-[0.875rem] text-slate-soft">Loading</p>
       ) : comments.length === 0 ? (
-        <p className="mt-3 text-[0.8rem] text-slate-ink">
+        <p className="mt-4 text-[0.875rem] text-slate-ink">
           No comments yet. Be the first to reply.
         </p>
       ) : (
@@ -206,13 +204,13 @@ function Comments({ postId }: { postId: Id<"posts"> }) {
                   src={comment.author.avatarUrl}
                   size="sm"
                 />
-                <div className="min-w-0 flex-1 rounded-card border border-line bg-surface px-3 py-2">
+                <div className="min-w-0 flex-1 rounded-card border border-line bg-surface px-4 py-2.5">
                   <div className="flex flex-wrap items-center gap-x-2">
-                    <span className="font-display text-[0.85rem] text-ink">
+                    <span className="font-display text-[0.9375rem] font-medium text-ink">
                       {comment.author.name}
                     </span>
                     {comment.author.verified ? <VerifiedMark /> : null}
-                    <span className="font-mono text-[0.62rem] uppercase tracking-[0.1em] text-slate-soft">
+                    <span className="text-[0.8125rem] text-slate-soft">
                       {ago(comment.createdAt)}
                     </span>
                     {comment.isMine ? (
@@ -223,13 +221,13 @@ function Comments({ postId }: { postId: Id<"posts"> }) {
                             toast.error(actionErrorMessage(error)),
                           )
                         }
-                        className="font-mono ml-auto text-[0.62rem] uppercase tracking-[0.1em] text-slate-soft transition-colors hover:text-maroon"
+                        className="ml-auto text-[0.8125rem] text-slate-soft transition-colors hover:text-maroon"
                       >
                         Delete
                       </button>
                     ) : null}
                   </div>
-                  <p className="mt-1 whitespace-pre-wrap text-[0.875rem] leading-relaxed text-ink">
+                  <p className="mt-1 whitespace-pre-wrap text-[0.9375rem] leading-[1.6] text-ink">
                     {comment.body}
                   </p>
                 </div>
@@ -259,7 +257,9 @@ function AuthorLine({
 }) {
   const name = (
     <span
-      className={`font-display text-ink ${small ? "text-[0.875rem]" : "text-[0.95rem]"}`}
+      className={`font-display font-medium text-ink ${
+        small ? "text-[0.9375rem]" : "text-[1.0625rem]"
+      }`}
     >
       {author.name}
     </span>
@@ -267,7 +267,11 @@ function AuthorLine({
 
   return (
     <div className="flex min-w-0 gap-3">
-      <Avatar name={author.name} src={author.avatarUrl} size="sm" />
+      <Avatar
+        name={author.name}
+        src={author.avatarUrl}
+        size={small ? "sm" : "md"}
+      />
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-x-2">
           {author.alumniId ? (
@@ -283,11 +287,13 @@ function AuthorLine({
           {author.verified ? <VerifiedMark /> : null}
         </div>
         {subtitle(author) ? (
-          <p className="truncate text-[0.75rem] leading-snug text-slate-ink">
+          <p className="truncate text-[0.8125rem] leading-snug text-slate-ink">
             {subtitle(author)}
           </p>
         ) : null}
-        <p className="font-mono text-[0.62rem] uppercase tracking-[0.1em] text-slate-soft">
+        {/* A timestamp is read, not filed. Sentence-case sans at 13px, the
+            size every feed uses, instead of 10px tracked capitals. */}
+        <p className="mt-0.5 text-[0.8125rem] leading-snug text-slate-soft">
           {ago(createdAt)}
           {editedAt ? " · edited" : ""}
         </p>
@@ -332,7 +338,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
       layout={!reduce}
       className="overflow-hidden rounded-card border border-line bg-surface shadow-card"
     >
-      <div className="flex items-start justify-between gap-3 p-4 pb-3">
+      <div className="flex items-start justify-between gap-3 p-5 pb-3">
         <AuthorLine
           author={post.author}
           createdAt={post.createdAt}
@@ -349,7 +355,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
                 .catch((error) => toast.error(actionErrorMessage(error)))
                 .finally(() => setBusy(false));
             }}
-            className="font-mono shrink-0 rounded-control px-2 py-1 text-[0.62rem] uppercase tracking-[0.1em] text-slate-soft transition-colors hover:bg-maroon-tint hover:text-maroon"
+            className="shrink-0 rounded-control px-2.5 py-1.5 text-[0.8125rem] text-slate-soft transition-colors hover:bg-maroon-tint hover:text-maroon"
           >
             Delete
           </button>
@@ -357,31 +363,32 @@ export default function PostCard({ post }: { post: FeedPost }) {
       </div>
 
       {post.hidden ? (
-        <p className="font-mono mx-4 mb-3 rounded-control border border-maroon/30 bg-maroon-tint px-3 py-2 text-[0.65rem] uppercase tracking-[0.1em] text-maroon">
+        <p className="mx-5 mb-3 rounded-control border border-maroon/30 bg-maroon-tint px-4 py-2.5 text-[0.875rem] text-maroon">
           Hidden by a moderator{post.hiddenReason ? ` — ${post.hiddenReason}` : ""}
         </p>
       ) : null}
 
+      {/* 16px at 1.65 — the reading size, not the caption size. */}
       {post.body ? (
-        <p className="whitespace-pre-wrap px-4 text-[0.95rem] leading-relaxed text-ink">
+        <p className="whitespace-pre-wrap px-5 text-[1rem] leading-[1.65] text-ink">
           {post.body}
         </p>
       ) : null}
 
-      <div className="px-4">
+      <div className="px-5">
         <PostMedia imageUrls={post.imageUrls} videoUrls={post.videoUrls} />
       </div>
 
       {/* The quoted original, inert. */}
       {post.sharedFrom ? (
-        <div className="mx-4 mt-3 rounded-card border border-line bg-bone p-3">
+        <div className="mx-5 mt-4 rounded-card border border-line bg-bone p-4">
           <AuthorLine
             author={post.sharedFrom.author}
             createdAt={post.sharedFrom.createdAt}
             small
           />
           {post.sharedFrom.body ? (
-            <p className="mt-2 whitespace-pre-wrap text-[0.875rem] leading-relaxed text-ink">
+            <p className="mt-2 whitespace-pre-wrap text-[0.9375rem] leading-[1.6] text-ink">
               {post.sharedFrom.body}
             </p>
           ) : null}
@@ -392,14 +399,14 @@ export default function PostCard({ post }: { post: FeedPost }) {
           />
         </div>
       ) : post.sharedFromMissing ? (
-        <p className="mx-4 mt-3 rounded-card border border-dashed border-line bg-bone p-3 text-[0.8rem] text-slate-ink">
+        <p className="mx-5 mt-4 rounded-card border border-dashed border-line bg-bone p-4 text-[0.875rem] text-slate-ink">
           The post this shared has since been deleted.
         </p>
       ) : null}
 
       {/* Poll */}
       {post.poll ? (
-        <div className="mt-3 space-y-1.5 px-4">
+        <div className="mt-4 space-y-2 px-5">
           {post.poll.options.map((option) => {
             const mine = post.poll?.myAnswer === option.label;
             const pct = Math.round(option.share * 100);
@@ -427,15 +434,17 @@ export default function PostCard({ post }: { post: FeedPost }) {
                   transition={{ duration: reduce ? 0.01 : 0.5, ease: [0.22, 1, 0.36, 1] }}
                 />
                 <span className="relative flex items-center justify-between gap-3">
-                  <span className="text-[0.875rem] text-ink">{option.label}</span>
-                  <span className="font-mono shrink-0 text-[0.68rem] tabular-nums text-slate-ink">
+                  <span className="text-[0.9375rem] text-ink">{option.label}</span>
+                  {/* The tally stays mono: it is a column of figures, which is
+                      the one place the utility face still earns its keep. */}
+                  <span className="font-mono shrink-0 text-[0.8125rem] tabular-nums text-slate-ink">
                     {pct}% · {option.votes}
                   </span>
                 </span>
               </button>
             );
           })}
-          <p className="font-mono pt-1 text-[0.62rem] uppercase tracking-[0.1em] text-slate-soft">
+          <p className="pt-1.5 text-[0.8125rem] text-slate-soft">
             {post.poll.totalVotes}{" "}
             {post.poll.totalVotes === 1 ? "vote" : "votes"}
             {post.poll.myAnswer ? " · you voted" : " · one vote each"}
@@ -444,14 +453,14 @@ export default function PostCard({ post }: { post: FeedPost }) {
       ) : null}
 
       {counts.length > 0 ? (
-        <p className="font-mono mt-3 border-t border-line px-4 pt-2.5 text-[0.65rem] uppercase tracking-[0.1em] text-slate-ink">
+        <p className="mt-4 border-t border-line px-5 pt-3 text-[0.8125rem] text-slate-ink">
           {counts.join(" · ")}
         </p>
       ) : (
-        <div className="mt-3 border-t border-line" />
+        <div className="mt-4 border-t border-line" />
       )}
 
-      <div className="flex items-stretch gap-1 p-2">
+      <div className="flex items-stretch gap-1 p-2.5">
         <ActionButton
           onClick={like}
           active={post.likedByMe}
@@ -475,7 +484,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
                 <motion.span
                   key={`ring-${stamping}`}
                   aria-hidden
-                  className="pointer-events-none absolute left-1/2 top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border border-brass"
+                  className="pointer-events-none absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-brass"
                   initial={{ scale: 0.6, opacity: 0.9 }}
                   animate={{ scale: 3.4, opacity: 0 }}
                   transition={{ duration: 0.5, ease: "easeOut" }}
@@ -491,7 +500,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
           active={showComments}
           label="Comments"
         >
-          <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
+          <svg viewBox="0 0 16 16" className="size-5" fill="none" aria-hidden>
             <path
               d="M2.5 3.5h11v7.5h-6l-3 2.5v-2.5h-2V3.5z"
               stroke="currentColor"
@@ -505,7 +514,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
           active={sharing}
           label="Share this post"
         >
-          <svg viewBox="0 0 16 16" className="size-4" fill="none" aria-hidden>
+          <svg viewBox="0 0 16 16" className="size-5" fill="none" aria-hidden>
             <path
               d="M4 9.5v3h8v-3M8 11V3.2M8 3.2L5.4 5.9M8 3.2l2.6 2.7"
               stroke="currentColor"
@@ -526,8 +535,8 @@ export default function PostCard({ post }: { post: FeedPost }) {
             transition={{ duration: reduce ? 0.01 : 0.2, ease: [0.22, 1, 0.36, 1] }}
             className="overflow-hidden border-t border-line bg-bone"
           >
-            <div className="space-y-2 p-4">
-              <p className="font-mono text-[0.65rem] uppercase tracking-[0.12em] text-brass-ink">
+            <div className="space-y-3 p-5">
+              <p className="text-[0.875rem] font-medium text-brass-ink">
                 Share to the association feed
               </p>
               <textarea
@@ -535,7 +544,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
                 rows={2}
                 onChange={(event) => setShareNote(event.target.value)}
                 placeholder="Add a note — optional"
-                className="w-full resize-y rounded-control border border-line bg-surface px-3 py-2 text-[0.875rem] text-ink placeholder:text-slate-soft focus:border-maroon focus:outline-none"
+                className="w-full resize-y rounded-control border border-line bg-surface px-4 py-3 text-[0.9375rem] leading-[1.6] text-ink placeholder:text-slate-soft focus:border-maroon focus:outline-none"
               />
               <div className="flex items-center gap-2">
                 <button
@@ -552,7 +561,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
                       .catch((error) => toast.error(actionErrorMessage(error)))
                       .finally(() => setBusy(false));
                   }}
-                  className="font-mono inline-flex min-h-9 items-center rounded-control bg-maroon px-4 text-[0.68rem] uppercase tracking-[0.12em] text-bone transition-colors hover:bg-maroon-deep disabled:opacity-45"
+                  className="inline-flex min-h-10 items-center rounded-control bg-maroon px-5 text-[0.9375rem] font-medium text-bone transition-colors hover:bg-maroon-deep disabled:opacity-45"
                 >
                   {busy ? "Sharing…" : "Share"}
                 </button>
@@ -564,7 +573,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
                       .then(() => toast.success("Link copied."))
                       .catch(() => toast.error("Could not copy the link."));
                   }}
-                  className="font-mono min-h-9 rounded-control border border-line px-3 text-[0.68rem] uppercase tracking-[0.1em] text-slate-ink transition-colors hover:border-line-strong hover:text-ink"
+                  className="min-h-10 rounded-control border border-line px-4 text-[0.9375rem] text-slate-ink transition-colors hover:border-line-strong hover:text-ink"
                 >
                   Copy link
                 </button>

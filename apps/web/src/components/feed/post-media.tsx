@@ -167,7 +167,7 @@ export default function PostMedia({ imageUrls, videoUrls, compact }: Props) {
             <button
               type="button"
               onClick={() => setZoomed(null)}
-              className="font-mono absolute right-5 top-5 rounded-control border border-white/25 px-3 py-1.5 text-[0.7rem] uppercase tracking-[0.12em] text-bone transition-colors hover:bg-white/10"
+              className="absolute right-5 top-5 min-h-11 rounded-control border border-white/25 px-4 text-[0.9375rem] font-medium text-bone transition-colors hover:bg-white/10"
             >
               Close
             </button>
