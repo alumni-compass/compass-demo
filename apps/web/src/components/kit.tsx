@@ -355,33 +355,73 @@ export function Pill({
 
 /** Verified badge — module 1's alumni verification, surfaced everywhere. */
 /**
- * The verified mark: the tick, and nothing else.
+ * The verified mark.
  *
- * It used to carry the word "Verified" beside the badge, which meant every
- * name in a list was followed by a nine-character label repeating what the
- * badge already said. A tick is the convention on every network people
- * already use, and it reads at a glance in a way a word next to a name does
- * not. The meaning lives in the tooltip and the accessible name, so nothing
- * is lost for a screen reader or for somebody who does not know the
- * convention.
+ * WHAT IT IS. A scalloped disc with a tick struck out of it — the shape every
+ * network has converged on, because it survives being 14 pixels tall next to a
+ * name, which a badge with any interior detail does not. The scallops are a
+ * real rosette (eleven lobes, alternating radii joined by quadratics) rather
+ * than a starburst, so the silhouette stays soft at small sizes instead of
+ * turning into a spiky blob.
+ *
+ * WHY THE TICK IS CUT OUT RATHER THAN DRAWN ON. A stroked white tick over a
+ * filled disc hairlines away when the badge is small or the screen is dense.
+ * `fill-rule: evenodd` on a single path punches the tick through the disc, so
+ * it is the page behind showing through — it stays crisp at any size and it
+ * cannot mismatch the surface it sits on.
+ *
+ * WHY THERE IS NO LABEL. It carried the word "Verified" beside it, so every
+ * name in every list was followed by a nine-character caption repeating what
+ * the badge already said. The meaning lives in the tooltip and the accessible
+ * name, which is where a screen reader looks for it anyway.
+ *
+ * The colour is jade against bone — the association's own accent for a
+ * confirmed fact — and it inherits nothing, so the badge reads the same on a
+ * dark card as on a light one.
  */
-export function VerifiedMark() {
+/**
+ * The verified state as a STATUS FIELD, with its word.
+ *
+ * Not a contradiction of the bare badge above -- a different job. Beside a
+ * name, the tick alone is right: the name says who, the tick says confirmed,
+ * and a caption reading "Verified" after every name is nine characters of
+ * nothing. But in a box labelled "Verification", the badge is the answer to a
+ * question, and its opposite state is a pill reading "Not verified". A lone
+ * tick against a worded pill does not read as two states of one thing; it
+ * reads as two unrelated objects. So the status field keeps its word and the
+ * name badge does not.
+ */
+export function VerifiedStatus() {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-jade-tint px-2.5 py-1 text-[0.8125rem] font-medium text-jade">
+      <VerifiedMark size="sm" />
+      Verified
+    </span>
+  );
+}
+
+export function VerifiedMark({
+  size = "sm",
+}: {
+  /** sm beside a name in a list · md on a post · lg on a profile header. */
+  size?: "sm" | "md" | "lg";
+}) {
+  const box =
+    size === "lg" ? "size-[1.5rem]" : size === "md" ? "size-[1.15rem]" : "size-[0.95rem]";
+
   return (
     <span
       title="Verified alumnus"
       role="img"
       aria-label="Verified alumnus"
-      className="inline-flex shrink-0 text-jade"
+      className={`inline-flex shrink-0 align-middle text-jade ${box}`}
     >
-      <svg viewBox="0 0 12 12" className="size-[1.05rem] fill-current" aria-hidden>
-        <path d="M6 0l1.6 1.2 2-.2.6 1.9 1.7 1.1-.9 1.8.3 2-1.9.6-1.2 1.6L6 11.2 4.2 12l-1.2-1.6-1.9-.6.3-2L.5 6l1.7-1.1.6-1.9 2 .2z" />
+      <svg viewBox="0 0 24 24" className="size-full" aria-hidden>
         <path
-          d="M4.1 6.1l1.35 1.35L8 4.8"
-          fill="none"
-          stroke="#F7F5F0"
-          strokeWidth="1.3"
-          strokeLinecap="round"
-          strokeLinejoin="round"
+          fillRule="evenodd"
+          clipRule="evenodd"
+          fill="currentColor"
+          d="M12.00 0.40 Q14.68 2.88 18.27 2.24 Q19.18 5.78 22.55 7.18 Q21.40 10.65 23.48 13.65 Q20.64 15.95 20.77 19.60 Q17.14 19.99 15.27 23.13 Q12.00 21.50 8.73 23.13 Q6.86 19.99 3.23 19.60 Q3.36 15.95 0.52 13.65 Q2.60 10.65 1.45 7.18 Q4.82 5.78 5.73 2.24 Q9.32 2.88 12.00 0.40 Z M17.16 9.24 L15.72 7.79 L10.62 12.86 L8.28 10.53 L6.84 11.97 L10.62 15.75 Z"
         />
       </svg>
     </span>

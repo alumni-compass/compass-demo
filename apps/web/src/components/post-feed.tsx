@@ -391,7 +391,7 @@ export function PostCard({
             ) : (
               <span className="text-[0.95rem] text-ink">{post.author.name}</span>
             )}
-            {post.author.verified ? <VerifiedMark /> : null}
+            {post.author.verified ? <VerifiedMark size="md" /> : null}
             <span className="font-mono text-[0.65rem] tabular-nums text-slate-soft">
               {when(post.createdAt)}
               {post.editedAt ? " · edited" : ""}

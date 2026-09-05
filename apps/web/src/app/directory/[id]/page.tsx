@@ -22,6 +22,7 @@ import {
   Shell,
   Stat,
   VerifiedMark,
+  VerifiedStatus,
 } from "@/components/kit";
 import { DEPARTMENT_NAMES, RITAA } from "@/lib/site";
 
@@ -223,7 +224,7 @@ export default function AlumniProfilePage() {
           {/* ---- Verification + the four facts, in mono ------------------ */}
           <div className="mt-8 flex flex-wrap items-center gap-3">
             {person.verified ? (
-              <VerifiedMark />
+              <VerifiedStatus />
             ) : (
               <Pill tone="quiet">Verification pending</Pill>
             )}

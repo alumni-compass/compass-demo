@@ -83,25 +83,35 @@ function subtitle(author: Author) {
 /* The seal                                                            */
 /* ------------------------------------------------------------------ */
 
-function Seal({ active }: { active: boolean }) {
+/**
+ * The like, drawn as a thumb.
+ *
+ * It used to be a wax seal -- a notched disc -- with the label "Add your
+ * seal". The institutional idiom is right for a masthead and wrong for the
+ * one control on the page whose entire job is to be recognised without
+ * being read. Nobody scanning a feed stops to work out what a notched disc
+ * does; everybody knows the thumb. Outline when you have not pressed it,
+ * solid when you have, which is the only state anybody needs to read.
+ */
+function LikeIcon({ active }: { active: boolean }) {
   return (
-    <svg viewBox="0 0 16 16" className="size-5" aria-hidden>
-      {/* A notched disc: a wax seal, not a heart and not a thumb. */}
+    <svg viewBox="0 0 20 20" className="size-[1.15rem]" aria-hidden>
       <path
-        d="M8 1.2l1.5 1.05 1.8-.35.75 1.68 1.6.9-.35 1.8.9 1.6-1.35 1.24-.35 1.8-1.82.15L8.6 14.6 8 14.8l-.6-.2-1.68-.82-1.82-.15-.35-1.8L2.2 10.6l.9-1.6-.35-1.8 1.6-.9.75-1.68 1.8.35L8 1.2z"
+        d="M6.4 17.2V8.6l3.4-5.4a1.5 1.5 0 0 1 2.7 1.1l-.7 3.1h4a1.6 1.6 0 0 1 1.6 2l-1.5 6a1.9 1.9 0 0 1-1.8 1.4H6.4z"
         fill={active ? "currentColor" : "none"}
         stroke="currentColor"
-        strokeWidth="1"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
       />
-      {active ? (
-        <path
-          d="M5.6 8.2l1.7 1.7 3.2-3.5"
-          fill="none"
-          stroke="#F7F5F0"
-          strokeWidth="1.4"
-          strokeLinecap="round"
-        />
-      ) : null}
+      {/* The cuff, kept as a separate stroke so the solid state still reads
+          as a hand rather than as one filled blob. */}
+      <path
+        d="M6.4 8.9H3.9a1 1 0 0 0-1 1v6.3a1 1 0 0 0 1 1h2.5z"
+        fill={active ? "currentColor" : "none"}
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
@@ -110,11 +120,14 @@ function ActionButton({
   onClick,
   active,
   label,
+  count = 0,
   children,
 }: {
   onClick?: () => void;
   active?: boolean;
   label: string;
+  /** Shown beside the label once there is one. Zero stays blank. */
+  count?: number;
   children: React.ReactNode;
 }) {
   const reduce = useReducedMotion();
@@ -123,15 +136,25 @@ function ActionButton({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      aria-label={label}
+      aria-label={count > 0 ? `${label} · ${count}` : label}
       whileTap={reduce ? undefined : { scale: 0.96 }}
-      className={`relative inline-flex min-h-11 flex-1 items-center justify-center gap-2.5 rounded-control text-[0.9375rem] font-medium transition-colors ${
+      className={`relative inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-control text-[0.9375rem] font-medium transition-colors ${
         active
           ? "bg-maroon-tint text-maroon"
           : "text-slate-ink hover:bg-bone hover:text-ink"
       }`}
     >
       {children}
+      {/*
+        The count sits on the control, not only in the summary line above it.
+        A zero renders as nothing rather than as "0" -- an empty post should
+        read as quiet, not as a row of noughts.
+      */}
+      {count > 0 ? (
+        <span className="font-mono text-[0.8125rem] tabular-nums opacity-80">
+          {count}
+        </span>
+      ) : null}
     </motion.button>
   );
 }
@@ -284,7 +307,9 @@ function AuthorLine({
           ) : (
             name
           )}
-          {author.verified ? <VerifiedMark /> : null}
+          {/* Sized to the name: md against the 1.0625rem author line on a
+              post, sm against the 0.9375rem one on a comment. */}
+          {author.verified ? <VerifiedMark size={small ? "sm" : "md"} /> : null}
         </div>
         {subtitle(author) ? (
           <p className="truncate text-[0.8125rem] leading-snug text-slate-ink">
@@ -323,15 +348,22 @@ export default function PostCard({ post }: { post: FeedPost }) {
     );
   }
 
-  const counts = [
-    post.likeCount > 0
-      ? `${post.likeCount} ${post.likeCount === 1 ? "seal" : "seals"}`
-      : null,
+  /*
+   * The right-hand half of the summary line. Likes are not in here: they get
+   * the badge on the left, the way every feed does it, because the number of
+   * people who liked something is read differently from the number who
+   * replied to it.
+   */
+  const engagement = [
     post.commentCount > 0
       ? `${post.commentCount} ${post.commentCount === 1 ? "comment" : "comments"}`
       : null,
-    post.shareCount > 0 ? `${post.shareCount} shared` : null,
+    post.shareCount > 0
+      ? `${post.shareCount} ${post.shareCount === 1 ? "share" : "shares"}`
+      : null,
   ].filter(Boolean);
+
+  const hasCounts = post.likeCount > 0 || engagement.length > 0;
 
   return (
     <motion.article
@@ -452,10 +484,54 @@ export default function PostCard({ post }: { post: FeedPost }) {
         </div>
       ) : null}
 
-      {counts.length > 0 ? (
-        <p className="mt-4 border-t border-line px-5 pt-3 text-[0.8125rem] text-slate-ink">
-          {counts.join(" · ")}
-        </p>
+      {hasCounts ? (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-line px-5 pt-3 text-[0.8125rem] text-slate-ink">
+          {post.likeCount > 0 ? (
+            <span className="inline-flex items-center gap-2">
+              {/* A filled thumb in a maroon disc, so the count on the left is
+                  unmistakably the likes and not a total of everything. */}
+              <span className="inline-flex size-[1.15rem] items-center justify-center rounded-full bg-maroon text-bone">
+                <svg viewBox="0 0 20 20" className="size-3" aria-hidden>
+                  <path
+                    d="M6.4 17.2V8.6l3.4-5.4a1.5 1.5 0 0 1 2.7 1.1l-.7 3.1h4a1.6 1.6 0 0 1 1.6 2l-1.5 6a1.9 1.9 0 0 1-1.8 1.4H6.4zM6.4 8.9H3.9a1 1 0 0 0-1 1v6.3a1 1 0 0 0 1 1h2.5z"
+                    fill="currentColor"
+                  />
+                </svg>
+              </span>
+              {/* "You and 3 others" rather than a bare number, because the
+                  fact that your own like registered is the thing you are
+                  looking for after pressing it. */}
+              <span>
+                {post.likedByMe ? (
+                  post.likeCount === 1 ? (
+                    "You"
+                  ) : (
+                    <>
+                      You and{" "}
+                      <span className="font-mono tabular-nums">
+                        {post.likeCount - 1}
+                      </span>{" "}
+                      {post.likeCount - 1 === 1 ? "other" : "others"}
+                    </>
+                  )
+                ) : (
+                  <span className="font-mono tabular-nums">{post.likeCount}</span>
+                )}
+              </span>
+            </span>
+          ) : (
+            <span />
+          )}
+          {engagement.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setShowComments(true)}
+              className="text-left transition-colors hover:text-maroon"
+            >
+              {engagement.join(" · ")}
+            </button>
+          ) : null}
+        </div>
       ) : (
         <div className="mt-4 border-t border-line" />
       )}
@@ -464,7 +540,8 @@ export default function PostCard({ post }: { post: FeedPost }) {
         <ActionButton
           onClick={like}
           active={post.likedByMe}
-          label={post.likedByMe ? "Remove your seal" : "Add your seal"}
+          count={post.likeCount}
+          label={post.likedByMe ? "Undo your like" : "Like this post"}
         >
           <span className="relative inline-flex items-center">
             <motion.span
@@ -476,7 +553,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
               transition={{ type: "spring", stiffness: 620, damping: 14 }}
               className="inline-flex"
             >
-              <Seal active={post.likedByMe} />
+              <LikeIcon active={post.likedByMe} />
             </motion.span>
             {/* The ring: one expanding brass circle, once, on stamping. */}
             <AnimatePresence>
@@ -498,6 +575,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
         <ActionButton
           onClick={() => setShowComments((value) => !value)}
           active={showComments}
+          count={post.commentCount}
           label="Comments"
         >
           <svg viewBox="0 0 16 16" className="size-5" fill="none" aria-hidden>
@@ -512,6 +590,7 @@ export default function PostCard({ post }: { post: FeedPost }) {
         <ActionButton
           onClick={() => setSharing((value) => !value)}
           active={sharing}
+          count={post.shareCount}
           label="Share this post"
         >
           <svg viewBox="0 0 16 16" className="size-5" fill="none" aria-hidden>

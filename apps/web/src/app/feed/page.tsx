@@ -182,7 +182,7 @@ function IdentityCard() {
           >
             {me.name}
           </Link>
-          {me.verified ? <VerifiedMark /> : null}
+          {me.verified ? <VerifiedMark size="md" /> : null}
         </div>
 
         {[me.batch ? `Batch of ${me.batch}` : null, me.department].filter(Boolean)

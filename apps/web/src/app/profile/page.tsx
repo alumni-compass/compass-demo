@@ -32,6 +32,7 @@ import {
   SectionHead,
   Shell,
   VerifiedMark,
+  VerifiedStatus,
 } from "@/components/kit";
 import {
   BATCH_YEARS,
@@ -717,12 +718,53 @@ function ProfileEditor({
           marked private.
         </p>
 
-        {/* ---- Your face, saved on choice rather than on submit --------- */}
-        <div className="mb-10 border border-line bg-white p-5 sm:p-6">
-          <AvatarPicker
-            name={saved?.name || name || sessionEmail}
-            currentUrl={saved?.avatarUrl ?? null}
-          />
+        {/* ---- Who this record is ---------------------------------------
+            The same three facts the feed rail and every post author line
+            show -- photograph, name with the tick, then batch, department and
+            employer -- at the scale a profile page wants. Reading identically
+            in all three places is the point: it is one person, and a member
+            should not have to work out that the name on the post and the name
+            at the top of this page are the same record. */}
+        <div className="mb-10 border border-line bg-white p-5 sm:p-7">
+          <div className="flex flex-wrap items-start gap-6">
+            <AvatarPicker
+              name={saved?.name || name || sessionEmail}
+              currentUrl={saved?.avatarUrl ?? null}
+            />
+            {saved ? (
+              <div className="min-w-0 flex-1 border-t border-line pt-5 sm:border-l sm:border-t-0 sm:pl-6 sm:pt-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-2xl leading-tight text-ink">
+                    {saved.name}
+                  </h2>
+                  {saved.verified ? <VerifiedMark size="lg" /> : null}
+                </div>
+                {[
+                  saved.batch ? `Batch of ${saved.batch}` : null,
+                  saved.department,
+                ].filter(Boolean).length > 0 ? (
+                  <p className="mt-1.5 text-[0.95rem] leading-snug text-slate-ink">
+                    {[
+                      saved.batch ? `Batch of ${saved.batch}` : null,
+                      saved.department,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+                {[saved.designation, saved.company].filter(Boolean).length > 0 ? (
+                  <p className="text-[0.95rem] leading-snug text-slate-ink">
+                    {[saved.designation, saved.company].filter(Boolean).join(" at ")}
+                  </p>
+                ) : null}
+                {saved.region ? (
+                  <p className="mt-1 text-[0.875rem] leading-snug text-slate-soft">
+                    {saved.region}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         </div>
 
         {/* ---- Record status. Read-only on purpose. --------------------- */}
@@ -737,7 +779,7 @@ function ProfileEditor({
             <Eyebrow>Verification</Eyebrow>
             <div className="mt-2">
               {saved?.verified ? (
-                <VerifiedMark />
+                <VerifiedStatus />
               ) : (
                 <Pill tone="quiet">Not verified</Pill>
               )}
