@@ -7,7 +7,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 import { authClient } from "@/lib/auth-client";
-import { initials, MEMBER_MENU, MEMBER_NAV, NAV, RITAA } from "@/lib/site";
+import { Avatar, VerifiedMark } from "@/components/kit";
+import { MEMBER_MENU, MEMBER_NAV, NAV, RITAA } from "@/lib/site";
 
 import RitLogo from "./rit-logo";
 
@@ -90,9 +91,28 @@ function AccountMenu() {
     };
   }, [open]);
 
-  const name = user?.name ?? "";
+  /**
+   * WHICH PHOTOGRAPH THE NAVBAR SHOWS, and why it is not the obvious one.
+   *
+   * `user.image` is the picture Google or LinkedIn handed over at sign-in.
+   * It was the only thing here, which meant a member who uploaded their own
+   * photograph on /profile saw it change on their posts, in the feed rail and
+   * on their profile page -- and not in the navbar, which carried on showing
+   * the provider's picture. One person, two faces, and the one that never
+   * updated was the one on screen at all times.
+   *
+   * The uploaded photograph wins, because it is the one the member chose. The
+   * provider's picture stays as the fallback, which is what gives somebody a
+   * face on their very first visit before they have uploaded anything.
+   */
+  const profile = useQuery(api.profiles.byEmail);
+
+  const name = profile?.name || user?.name || "";
   const email = user?.email ?? "";
-  const image = (user as { image?: string | null } | null | undefined)?.image;
+  const image =
+    profile?.avatarUrl ??
+    (user as { image?: string | null } | null | undefined)?.image ??
+    null;
 
   return (
     <div ref={wrap} className="relative">
@@ -102,16 +122,14 @@ function AccountMenu() {
         aria-expanded={open}
         aria-haspopup="menu"
         aria-label="Your account"
-        className="flex size-10 items-center justify-center overflow-hidden rounded-chip border border-line bg-surface transition-colors hover:border-maroon"
+        className="flex size-11 items-center justify-center rounded-full transition-shadow hover:ring-2 hover:ring-maroon/40 hover:ring-offset-2 hover:ring-offset-bone"
       >
-        {image ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt="" aria-hidden className="size-full object-cover" />
-        ) : (
-          <span className="font-mono text-[0.7rem] text-ink">
-            {initials(name || email || "?")}
-          </span>
-        )}
+        {/* The shared Avatar, so the navbar's monogram fallback is the same
+            monogram the feed, the directory and every post already draw. It
+            used to be a squircle with its own initials treatment, which made
+            the one face on screen at all times the only one that did not
+            match the rest of the portal. */}
+        <Avatar name={name || email || "?"} src={image} size="sm" />
       </button>
 
       {open ? (
@@ -119,11 +137,17 @@ function AccountMenu() {
           role="menu"
           className="absolute right-0 top-12 z-50 w-60 rounded-card border border-line bg-surface p-1.5 shadow-lift"
         >
-          <div className="border-b border-line px-3 pb-3 pt-2">
-            <p className="truncate text-[0.9rem] text-ink">{name || "Your account"}</p>
-            <p className="font-mono mt-0.5 truncate text-[0.7rem] text-slate-ink">
-              {email}
-            </p>
+          <div className="flex items-center gap-3 border-b border-line px-3 pb-3 pt-2">
+            <Avatar name={name || email || "?"} src={image} size="sm" />
+            <div className="min-w-0">
+              <p className="flex items-center gap-1.5 truncate text-[0.9rem] text-ink">
+                {name || "Your account"}
+                {profile?.verified ? <VerifiedMark /> : null}
+              </p>
+              <p className="font-mono mt-0.5 truncate text-[0.7rem] text-slate-ink">
+                {email}
+              </p>
+            </div>
           </div>
           {MEMBER_MENU.map((item) => (
             <Link
