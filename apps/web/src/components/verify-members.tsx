@@ -5,6 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import type { Role } from "@RIT-ALUMINI/backend/convex/authz";
 import {
   actionErrorMessage,
   Avatar,
@@ -53,6 +54,8 @@ export default function VerifyMembers() {
     text: text.trim() || undefined,
   });
   const setVerified = useMutation(api.access.setVerified);
+  const assignRole = useMutation(api.access.assignRole);
+  const me = useQuery(api.auth.getCurrentUser);
   const [busy, setBusy] = useState<string | null>(null);
 
   if (data === undefined) {
@@ -74,6 +77,36 @@ export default function VerifyMembers() {
         </p>
       </Card>
     );
+  }
+
+  /**
+   * Change a role.
+   *
+   * Stepping an admin down is confirmed rather than instant, because the person
+   * doing it may be removing their own access to this very panel — and the
+   * server will refuse anyway if they are the last one, which is a worse
+   * moment to discover the intent than before the click.
+   */
+  function changeRole(email: string, role: Role, name: string) {
+    const mine = me?.email?.trim().toLowerCase() === email;
+    if (role !== "admin" && mine) {
+      const ok = window.confirm(
+        `Remove your own admin role? You will lose access to this console immediately, and only another admin or the CLI can give it back.`,
+      );
+      if (!ok) return;
+    }
+
+    setBusy(email);
+    assignRole({ email, role })
+      .then(() =>
+        toast.success(
+          role === "guest"
+            ? `${name} no longer has a role.`
+            : `${name} is now ${role}.`,
+        ),
+      )
+      .catch((error) => toast.error(actionErrorMessage(error)))
+      .finally(() => setBusy(null));
   }
 
   function toggle(email: string, next: boolean, name: string) {
@@ -145,9 +178,6 @@ export default function VerifyMembers() {
                     ) : (
                       <Pill tone="brass">Not verified</Pill>
                     )}
-                    {row.role !== "guest" ? (
-                      <Pill tone="quiet">{row.role}</Pill>
-                    ) : null}
                     {!row.hasAccount ? (
                       <Pill tone="quiet">Never signed in</Pill>
                     ) : null}
@@ -161,6 +191,24 @@ export default function VerifyMembers() {
                       : "Signed in, but has not filled in their details yet — there is nothing to check against college records until they do."}
                   </p>
                 </div>
+                <label className="sr-only" htmlFor={`role-${row.email}`}>
+                  Role for {row.name}
+                </label>
+                <select
+                  id={`role-${row.email}`}
+                  value={row.role}
+                  disabled={busy === row.email}
+                  onChange={(event) =>
+                    changeRole(row.email, event.target.value as Role, row.name)
+                  }
+                  className="font-mono min-h-9 shrink-0 rounded-control border border-line bg-surface px-2.5 text-[0.7rem] uppercase tracking-[0.08em] text-ink transition-colors hover:border-line-strong focus:border-maroon focus:outline-none disabled:opacity-50"
+                >
+                  <option value="guest">No role</option>
+                  <option value="alumni">Alumni</option>
+                  <option value="entrepreneur">Entrepreneur</option>
+                  <option value="admin">Admin</option>
+                </select>
+
                 <Button
                   size="sm"
                   variant={row.verified ? "ghost" : "solid"}

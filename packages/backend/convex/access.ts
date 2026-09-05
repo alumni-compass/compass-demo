@@ -7,7 +7,7 @@ import {
   type MutationCtx,
   query,
 } from "./_generated/server";
-import { requireRole } from "./authz";
+import { type Role, requireRole } from "./authz";
 
 /**
  * Module 1 — user roles, access and verification.
@@ -445,6 +445,88 @@ export const roleFor = query({
   },
 });
 
+const roleValidator = v.union(
+  v.literal("alumni"),
+  v.literal("entrepreneur"),
+  v.literal("admin"),
+  v.literal("guest"),
+);
+
+/**
+ * Writes a role, or removes the row when the role is `guest`.
+ *
+ * GUEST IS AN ABSENCE, not a value. `resolveRole` already answers guest for an
+ * address with no grant, so storing an explicit guest row asserts a decision
+ * nobody made — and worse, it would pin someone to guest even after their
+ * verification would otherwise have made them an alumnus. Deleting the row lets
+ * the derived answer take over again, which is what "no special role" means.
+ */
+async function applyRole(ctx: MutationCtx, email: string, role: Role) {
+  const existing = await ctx.db
+    .query("memberRoles")
+    .withIndex("by_email", (q) => q.eq("email", email))
+    .unique();
+
+  if (role === "guest") {
+    if (existing) await ctx.db.delete(existing._id);
+    return { email, role, removed: existing !== null };
+  }
+
+  if (existing) {
+    await ctx.db.patch(existing._id, { role, updatedAt: Date.now() });
+  } else {
+    await ctx.db.insert("memberRoles", { email, role, updatedAt: Date.now() });
+  }
+  return { email, role, removed: false };
+}
+
+/**
+ * Sets or removes a member's role, from the admin console.
+ *
+ * WHAT THIS CHANGES ABOUT THE TRUST MODEL, stated plainly. Role granting was
+ * CLI-only precisely so admin could not be self-assigned from a browser. The
+ * important half of that is kept — `requireRole` means only an existing admin
+ * reaches this at all, and the FIRST admin still has to be granted from the
+ * terminal by whoever holds the deploy key. What is new is that admins can now
+ * appoint and remove each other without a shell.
+ *
+ * ONE GUARD, and it is the one that matters: THE LAST ADMIN CANNOT BE DEMOTED.
+ * Not by somebody else, and not by themselves. Without it a single click
+ * empties the console for everyone, and the only way back is the deploy key —
+ * which the person clicking may not have. Better Auth refuses to unlink a
+ * member's last account for exactly this reason.
+ *
+ * Stepping down IS allowed once another admin exists, including on your own
+ * row. An admin leaving the committee should not need somebody else to do it
+ * for them, and the guard above already makes the dangerous version impossible.
+ */
+export const assignRole = mutation({
+  args: { email: v.string(), role: roleValidator },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, ["admin"]);
+    const email = roleEmail(args.email);
+
+    if (args.role !== "admin") {
+      const current = await ctx.db
+        .query("memberRoles")
+        .withIndex("by_email", (q) => q.eq("email", email))
+        .unique();
+
+      if (current?.role === "admin") {
+        const rows = await ctx.db.query("memberRoles").collect();
+        const admins = rows.filter((row) => row.role === "admin");
+        if (admins.length <= 1) {
+          throw new Error(
+            "That is the only admin left. Appoint another one first, or nobody can reach the console.",
+          );
+        }
+      }
+    }
+
+    return applyRole(ctx, email, args.role);
+  },
+});
+
 export const setRole = internalMutation({
   args: {
     email: v.string(),
@@ -456,20 +538,9 @@ export const setRole = internalMutation({
     ),
   },
   handler: async (ctx, args) => {
-    const email = roleEmail(args.email);
-    const existing = await ctx.db
-      .query("memberRoles")
-      .withIndex("by_email", (q) => q.eq("email", email))
-      .unique();
-    if (existing) {
-      await ctx.db.patch(existing._id, { role: args.role, updatedAt: Date.now() });
-    } else {
-      await ctx.db.insert("memberRoles", {
-        email,
-        role: args.role,
-        updatedAt: Date.now(),
-      });
-    }
-    return { email, role: args.role };
+    // No guard here on purpose. This is the terminal, reachable only with the
+    // deploy key, and it is both how the first admin is appointed and how the
+    // console is recovered if it has locked everybody out.
+    return applyRole(ctx, roleEmail(args.email), args.role);
   },
 });
