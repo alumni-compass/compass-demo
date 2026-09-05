@@ -333,7 +333,10 @@ function PeopleToKnow() {
               >
                 {member.name}
               </Link>
-              <p className="truncate text-[0.8125rem] leading-snug text-slate-ink">
+              {/* Two lines rather than one: the reason now names mutual
+                  connections as well as the batch, and truncating it to a
+                  single line cut off the half that persuades anybody. */}
+              <p className="line-clamp-2 text-[0.8125rem] leading-snug text-slate-ink">
                 {reason}
               </p>
             </div>
