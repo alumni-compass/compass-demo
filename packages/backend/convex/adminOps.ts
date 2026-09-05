@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 
+import { components } from "./_generated/api";
 import { internalMutation, query } from "./_generated/server";
 import { resolveRole } from "./authz";
 
@@ -243,16 +244,25 @@ export const pendingVerifications = query({
 });
 
 /**
- * Every member, with the flag an admin is here to change.
+ * Everybody who has ever signed in, with the flag an admin is here to change.
  *
- * Unverified first, because that is the actionable half — an admin opening this
- * panel is looking for people to check, not admiring the ones already done.
- * Capped at a hundred, with the totals reported separately so the cap is
- * visible rather than silently truncating the association.
+ * WHY IT READS THE AUTH COMPONENT AND NOT JUST `alumni`. The first version
+ * listed the `alumni` table, which is everyone who has completed the DETAILS
+ * FORM — so a member who signed in and never opened it did not appear at all,
+ * and an admin could not verify the very people most likely to need chasing.
+ * The account list lives in the Better Auth component; `adapter.findMany` is a
+ * public query on it, so this reads the `user` model directly and then joins on
+ * whatever profile exists.
  *
- * Returns EMAIL, which nothing member-facing does. That is the whole reason it
- * is admin-only: verification is performed against an address, so whoever does
- * it has to see which address they are approving.
+ * THE JOIN IS THE POINT. Three states matter and they look different here:
+ *   signed in, no profile   — nothing to verify against yet, and it says so.
+ *   signed in, profile      — verifiable; this is the normal row.
+ *   profile, no account     — the seeded office bearers, who have never logged
+ *                             in. Kept, because they are real members of the
+ *                             association and hiding them would be a lie of
+ *                             omission.
+ *
+ * Unverified first, because that is what an admin came to act on.
  */
 export const membersForVerification = query({
   args: { text: v.optional(v.string()) },
@@ -261,37 +271,83 @@ export const membersForVerification = query({
       return {
         authorized: false as const,
         rows: [],
-        counts: { total: 0, verified: 0, shown: 0 },
+        counts: { total: 0, verified: 0, signedIn: 0, withoutProfile: 0, shown: 0 },
       };
     }
 
+    /* Every account the portal has issued. Paginated by the component, so a
+       page is asked for explicitly rather than assuming a small table. */
+    const accounts = await ctx.runQuery(
+      components.betterAuth.adapter.findMany,
+      {
+        model: "user",
+        paginationOpts: { numItems: 500, cursor: null },
+      },
+    );
+
+    const signedIn = new Map<string, { name: string | null; createdAt: number | null }>();
+    for (const row of accounts.page) {
+      const email = typeof row.email === "string" ? row.email.trim().toLowerCase() : "";
+      if (!email) continue;
+      signedIn.set(email, {
+        name: typeof row.name === "string" ? row.name : null,
+        createdAt:
+          typeof row.createdAt === "number"
+            ? row.createdAt
+            : typeof row._creationTime === "number"
+              ? row._creationTime
+              : null,
+      });
+    }
+
+    const profiles = await ctx.db.query("alumni").collect();
+    const profileByEmail = new Map(
+      profiles.map((row) => [row.email.trim().toLowerCase(), row]),
+    );
+
+    const roles = await ctx.db.query("memberRoles").collect();
+    const roleByEmail = new Map(
+      roles.map((row) => [row.email.trim().toLowerCase(), row.role]),
+    );
+
+    /* The union: every account, plus every profile without one. */
+    const emails = new Set<string>([...signedIn.keys(), ...profileByEmail.keys()]);
+
+    const all = [...emails].map((email) => {
+      const profile = profileByEmail.get(email);
+      const account = signedIn.get(email);
+      return {
+        email,
+        name: profile?.name ?? account?.name ?? email,
+        hasAccount: account !== undefined,
+        hasProfile: profile !== undefined,
+        verified: profile?.verified ?? false,
+        role: roleByEmail.get(email) ?? "guest",
+        batch: profile?.batch ?? null,
+        department: profile?.department ?? null,
+        joinedAt: profile?.joinedAt ?? account?.createdAt ?? null,
+      };
+    });
+
     const needle = (args.text ?? "").trim().toLowerCase();
-    const all = await ctx.db.query("alumni").collect();
     const matched = needle
       ? all.filter(
           (row) =>
             row.name.toLowerCase().includes(needle) ||
-            row.email.toLowerCase().includes(needle) ||
+            row.email.includes(needle) ||
             (row.department ?? "").toLowerCase().includes(needle) ||
-            String(row.batch).includes(needle),
+            String(row.batch ?? "").includes(needle),
         )
       : all;
 
     const rows = matched
       .sort(
         (a, b) =>
-          Number(a.verified) - Number(b.verified) || a.name.localeCompare(b.name),
+          Number(a.verified) - Number(b.verified) ||
+          Number(b.hasProfile) - Number(a.hasProfile) ||
+          a.name.localeCompare(b.name),
       )
-      .slice(0, 100)
-      .map((row) => ({
-        alumniId: row._id,
-        name: row.name,
-        email: row.email,
-        batch: row.batch,
-        department: row.department,
-        verified: row.verified,
-        joinedAt: row.joinedAt,
-      }));
+      .slice(0, 200);
 
     return {
       authorized: true as const,
@@ -299,6 +355,8 @@ export const membersForVerification = query({
       counts: {
         total: all.length,
         verified: all.filter((row) => row.verified).length,
+        signedIn: signedIn.size,
+        withoutProfile: all.filter((row) => row.hasAccount && !row.hasProfile).length,
         shown: rows.length,
       },
     };

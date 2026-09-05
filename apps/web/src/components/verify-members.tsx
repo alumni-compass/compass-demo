@@ -21,11 +21,17 @@ import {
 /**
  * Admin: verify a member, or take it back.
  *
- * WHY IT IS A LIST OF MEMBERS AND NOT A QUEUE. The queue answers requests, and
- * the form that filed them was removed from `/join` — so a queue here would be
- * permanently empty while every real member sat unverified with no way to
- * change it. This works from the directory instead: search a name, see the
- * flag, change it.
+ * WHY IT IS A LIST OF ACCOUNTS AND NOT A QUEUE. The queue answers requests,
+ * and the form that filed them was removed from `/join` — so a queue here
+ * would be permanently empty while every real member sat unverified with no
+ * way to change it.
+ *
+ * It lists everyone who has SIGNED IN, from the auth component, joined to
+ * whatever profile they have. An earlier version read the `alumni` table, which
+ * is everyone who finished the details form — so the members most likely to
+ * need chasing, the ones who logged in and stopped, were the exact people it
+ * could not show. Somebody with no profile appears here with the button
+ * disabled and the reason on it, rather than being left out.
  *
  * IT IS A REAL BUTTON, not a copyable command. Every privileged write in this
  * console is a shell line the admin runs themselves, because `/admin` has no
@@ -84,16 +90,22 @@ export default function VerifyMembers() {
     <Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <Eyebrow>Verify members</Eyebrow>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Pill tone="jade">{data.counts.verified} verified</Pill>
-          <Pill tone="quiet">{data.counts.total} on record</Pill>
+          <Pill tone="quiet">{data.counts.signedIn} signed in</Pill>
+          {data.counts.withoutProfile > 0 ? (
+            <Pill tone="brass">
+              {data.counts.withoutProfile} without a profile
+            </Pill>
+          ) : null}
         </div>
       </div>
 
       <p className="mt-2 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
-        The tick beside a member&rsquo;s name across the portal is this flag.
-        Check their batch and roll number against college records first — this
-        button is the record of that decision, not the decision itself.
+        Everyone who has signed in, whether or not they have filled in their
+        details. The tick beside a member&rsquo;s name across the portal is this
+        flag — check their batch and roll number against college records first,
+        because this button records the decision rather than making it.
       </p>
 
       <div className="mt-4">
@@ -111,8 +123,8 @@ export default function VerifyMembers() {
             title={text ? "Nobody matches that" : "No member records yet"}
             hint={
               text
-                ? "Try a shorter search. Only members who have filled in their details appear here — verification is granted against their own record."
-                : "As members complete the details form they appear here, unverified, waiting to be checked against college records."
+                ? "Try a shorter search — this covers everyone who has signed in, by name, email, batch or programme."
+                : "Nobody has signed in yet. Everyone who does appears here, whether or not they have filled in their details."
             }
           />
         </div>
@@ -121,7 +133,7 @@ export default function VerifyMembers() {
           <ul className="mt-5 divide-y divide-line">
             {data.rows.map((row) => (
               <li
-                key={String(row.alumniId)}
+                key={row.email}
                 className="flex flex-wrap items-center gap-3 py-3"
               >
                 <Avatar name={row.name} size="sm" />
@@ -133,25 +145,40 @@ export default function VerifyMembers() {
                     ) : (
                       <Pill tone="brass">Not verified</Pill>
                     )}
+                    {row.role !== "guest" ? (
+                      <Pill tone="quiet">{row.role}</Pill>
+                    ) : null}
+                    {!row.hasAccount ? (
+                      <Pill tone="quiet">Never signed in</Pill>
+                    ) : null}
                   </div>
                   <p className="font-mono truncate text-[0.7rem] text-slate-ink">
                     {row.email}
                   </p>
                   <p className="text-[0.78rem] leading-snug text-slate-ink">
-                    Batch of {row.batch} · {row.department}
+                    {row.hasProfile
+                      ? `Batch of ${row.batch} · ${row.department}`
+                      : "Signed in, but has not filled in their details yet — there is nothing to check against college records until they do."}
                   </p>
                 </div>
                 <Button
                   size="sm"
                   variant={row.verified ? "ghost" : "solid"}
-                  disabled={busy === row.email}
+                  disabled={busy === row.email || !row.hasProfile}
+                  title={
+                    row.hasProfile
+                      ? undefined
+                      : "Verification is recorded on the member's own profile, so they have to fill it in first."
+                  }
                   onClick={() => toggle(row.email, !row.verified, row.name)}
                 >
                   {busy === row.email
                     ? "Saving…"
-                    : row.verified
-                      ? "Remove verification"
-                      : "Verify"}
+                    : !row.hasProfile
+                      ? "No profile yet"
+                      : row.verified
+                        ? "Remove verification"
+                        : "Verify"}
                 </Button>
               </li>
             ))}
