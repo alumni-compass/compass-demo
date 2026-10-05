@@ -1,7 +1,7 @@
 "use client";
 
-import { api, useQuery } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
 import { useState, type ReactNode } from "react";
 
 import DetailsFormAdmin from "@/components/details-form-admin";
@@ -30,9 +30,24 @@ import { DEPARTMENT_NAMES, formatDate, inr, RITAA, ROLES } from "@/lib/site";
  * An operations console, so it is built as dense tables rather than cards: the
  * job here is to scan a queue and act on it, not to be admired.
  *
- * Every number on this page comes from the sample records held in the browser.
- * Privileged writes are recorded as copyable decisions and are not applied
- * until a backend exists to accept them.
+ * Every number on this page comes from a live Convex subscription. `useQuery`
+ * re-renders when the underlying table changes, so the dashboard is genuinely
+ * real-time — no polling, no nightly snapshot.
+ *
+ * THE READ/WRITE SPLIT
+ *
+ * `/admin` has no access gate yet. That single fact decides the architecture of
+ * this whole screen: every privileged action is a documented CLI command, not a
+ * button. `convex/adminOps.ts` exposes the moderation queues as public read-only
+ * queries, and keeps `approveVenture` / `rejectVenture` as `internalMutation` —
+ * unreachable from any browser. `access.ts` already does the same with
+ * `reviewVerification` and `setRole`. So there is no code path on this page, and
+ * none in the deployed public API, by which a visitor could approve a venture,
+ * verify a member or grant themselves the admin role. The copy buttons in the
+ * queues below copy a shell command to the clipboard; they do not act.
+ *
+ * The CSV exports are real: each file is assembled in the browser from the
+ * loaded query results and handed over through a Blob object URL.
  */
 
 /* ------------------------------------------------------------------ */
@@ -52,20 +67,22 @@ const labelClass =
 const SAMPLE_LIMIT = 200;
 
 /** Privileged actions are CLI calls. These build the exact command, per row. */
+const CLI_CWD = "packages/backend";
+
 function approveVentureCmd(ventureId: string) {
-  return `Approve venture ${ventureId} — held until the new backend can apply it.`;
+  return `npx convex run adminOps:approveVenture '{"ventureId":"${ventureId}"}'`;
 }
 
 function rejectVentureCmd(ventureId: string) {
-  return `Reject venture ${ventureId} — held until the new backend can apply it.`;
+  return `npx convex run adminOps:rejectVenture '{"ventureId":"${ventureId}"}'`;
 }
 
 function reviewVerificationCmd(email: string, decision: "approved" | "rejected") {
-  return `${decision === "approved" ? "Approve" : "Reject"} ${email} — held until the new backend can apply it.`;
+  return `npx convex run access:reviewVerification '{"email":"${email}","decision":"${decision}"}'`;
 }
 
 function setRoleCmd(email: string, role: string) {
-  return `Set ${email} to ${role} — held until the new backend can apply it.`;
+  return `npx convex run access:setRole '{"email":"${email}","role":"${role}"}'`;
 }
 
 function daysSince(ts: number) {
@@ -374,7 +391,7 @@ export default function AdminPage() {
       would:
         "RSVP reminders for module 7, campaign updates and receipts for module 8, newsletter issues from module 6, and the decision note that closes a verification request.",
       blocker:
-        "Email stays off until the new backend has a mailer. This preview does not send.",
+        "npx convex env set RESEND_API_KEY re_… — eventAdmin.sendReminder throws without it rather than reporting a reminder it never sent.",
     },
     {
       channel: "SMS",
@@ -637,15 +654,19 @@ export default function AdminPage() {
                 This route is not authenticated.
               </strong>{" "}
               Anyone who knows the URL <code className="font-mono">/admin</code>{" "}
-              can load it. The queues below are sample records in this browser,
-              including applicant names, email addresses and roll numbers. Gating
-              this route to the Admin role is a release blocker once a backend
-              exists.
+              can load it, and the queues below are public Convex queries — which
+              means applicant names, email addresses and roll numbers are readable
+              by any client today. Gating this route to the Admin role is now a
+              release blocker, not a nicety.
             </p>
             <p className="mt-3 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
-              Approving a venture, verifying a member and granting a role are not
-              applied from this screen. The copy buttons record the intended
-              decision for the backend that replaces this preview.
+              What is <em>not</em> exposed is the ability to change anything.
+              Approving a venture, verifying a member and granting a role are all{" "}
+              <code className="font-mono">internalMutation</code>s in{" "}
+              <code className="font-mono">adminOps.ts</code> and{" "}
+              <code className="font-mono">access.ts</code>, so they are absent from
+              the public API and cannot be called from a browser at all. That is
+              why this screen hands you commands instead of buttons.
             </p>
           </div>
 
@@ -667,9 +688,19 @@ export default function AdminPage() {
                 every member-only surface is unreachable, including this panel once
                 it is gated.
               </p>
+              <pre className="font-mono mt-4 overflow-x-auto rounded-control bg-ink p-4 text-[0.72rem] leading-relaxed text-bone">
+                {`npx convex env set GOOGLE_CLIENT_ID        …
+npx convex env set GOOGLE_CLIENT_SECRET    …
+npx convex env set LINKEDIN_CLIENT_ID      …
+npx convex env set LINKEDIN_CLIENT_SECRET  …`}
+              </pre>
               <p className="mt-3 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
-                Provider credentials belong on the new backend. This preview signs
-                in locally and does not call Google or LinkedIn.
+                Each provider registers itself the moment both of its values are
+                present — see <code className="font-mono">auth.ts</code>. Register{" "}
+                <code className="font-mono">
+                  &lt;SITE_URL&gt;/api/auth/callback/google
+                </code>{" "}
+                and the LinkedIn equivalent as redirect URIs with each provider.
               </p>
             </div>
           ) : null}
@@ -701,7 +732,7 @@ export default function AdminPage() {
           <SectionHead
             eyebrow="Data dashboard"
             title="Every figure here is live"
-            lede="These figures come from the sample records in this browser. They change when you edit them here, and they reset when the page is refreshed."
+            lede="These are Convex subscriptions, not a nightly snapshot. When a member joins, a venture is submitted, an RSVP lands or a gift is recorded, the numbers on this screen change without a refresh."
           />
           <div className="grid gap-px bg-line sm:grid-cols-2 lg:grid-cols-4">
             {[
@@ -959,9 +990,9 @@ export default function AdminPage() {
           <Card className="mt-6 hover:border-line">
             <Eyebrow>Runbook · verification</Eyebrow>
             <p className="mt-3 text-[0.875rem] leading-relaxed text-slate-ink">
-              The buttons in the table copy the intended decision with that
-              row&rsquo;s email already filled in. Nothing is applied until the
-              new backend accepts it.
+              Run from <code className="font-mono">{CLI_CWD}</code>. The buttons in
+              the table above copy the same command with that row&rsquo;s email
+              already filled in.
             </p>
             <div className="mt-4 space-y-2">
               <Command>
@@ -1116,9 +1147,12 @@ export default function AdminPage() {
               <Pill tone="jade">No public mutation exists</Pill>
             </div>
             <p className="mt-3 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
-              Approve and reject are not applied from this page. The per-row
-              buttons copy the intended decision with the venture ID already
-              filled in.
+              Approve and reject are{" "}
+              <code className="font-mono">internalMutation</code>s, so they are not
+              part of the deployed public API and no visitor to this page can invoke
+              them. Run them from <code className="font-mono">{CLI_CWD}</code> with
+              the deployment&rsquo;s admin key — the per-row buttons below copy the
+              same command with the venture ID already substituted.
             </p>
             <div className="mt-4 space-y-2">
               <Command>{approveVentureCmd("<ventureId>")}</Command>
@@ -1301,7 +1335,7 @@ export default function AdminPage() {
             ) : campaigns.length === 0 ? (
               <Empty
                 title="No campaigns on the ledger yet."
-                hint="Campaigns in this preview are sample records. A new one appears here, on the giving page and in this export once the backend can store it."
+                hint="Create a campaign in the Convex dashboard and it appears here, on the giving page and in this export, immediately."
               />
             ) : (
               <ul className="grid gap-px bg-line lg:grid-cols-2">
@@ -1459,13 +1493,17 @@ export default function AdminPage() {
           </TableFrame>
 
           <p className="mt-6 max-w-3xl text-[0.875rem] leading-relaxed text-slate-ink">
-            The email row reads whether a mailer is configured. This preview
-            has none, so a queued reminder stays on this device.{" "}
+            The email row reads{" "}
+            <code className="font-mono">api.eventAdmin.mailerStatus()</code>, which
+            is <code className="font-mono">Boolean(RESEND_API_KEY)</code> on the
+            Convex deployment — the key{" "}
+            <code className="font-mono">eventAdmin.sendReminder</code> needs before a
+            queued reminder can leave the building.{" "}
             {emailGateway === undefined
               ? "Reading it now."
               : emailGateway
                 ? "It is set, so the transport works — a broadcast composer is UI work, not integration work."
-                : "It is not set, so this preview cannot send mail."}
+                : "It is not set, so nothing on this deployment can send mail today."}
           </p>
 
           <div className="mt-8 grid gap-px bg-line sm:grid-cols-3">
@@ -1664,8 +1702,11 @@ export default function AdminPage() {
                       ))}
                     </div>
                     <p className="mt-3 text-[0.8rem] leading-relaxed text-slate-ink">
-                      Role changes are copied here and applied by the new backend.
-                      This page cannot grant the Admin role by itself.
+                      <code className="font-mono">access:setRole</code> is an
+                      internal mutation, so it runs from{" "}
+                      <code className="font-mono">{CLI_CWD}</code> and never from a
+                      browser. That is the whole reason nobody can grant themselves
+                      the Admin role on an ungated route.
                     </p>
                   </div>
                 </>

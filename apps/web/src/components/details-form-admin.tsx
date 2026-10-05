@@ -1,7 +1,8 @@
 "use client";
 
-import { api, type Id, useMutation, useQuery } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
+import { useMutation, useQuery } from "convex/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -580,7 +581,7 @@ export default function DetailsFormAdmin() {
           rather than an empty form that would look like a configuration.
         </p>
         <p className="font-mono mt-3 text-[0.75rem] leading-relaxed text-slate-ink">
-          Grant this role from the new backend.
+          npx convex run access:setRole
         </p>
       </Card>
     );

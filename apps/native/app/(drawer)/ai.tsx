@@ -1,23 +1,244 @@
+import { useUIMessages, useSmoothText } from "@convex-dev/agent/react";
 import { Ionicons } from "@expo/vector-icons";
-import { Surface, useThemeColor } from "heroui-native";
-import { Text, View } from "react-native";
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useMutation } from "convex/react";
+import {
+  Button,
+  Separator,
+  Spinner,
+  Surface,
+  Input,
+  TextField,
+  useThemeColor,
+} from "heroui-native";
+import { useRef, useEffect, useState } from "react";
+import { View, Text, ScrollView, KeyboardAvoidingView, Platform, Pressable } from "react-native";
 
 import { Container } from "@/components/container";
 
-export default function AIScreen() {
-  const mutedColor = useThemeColor("muted");
+const starterPrompts = [
+  {
+    label: "Plan a feature",
+    prompt: "Help me plan the first version of a habit tracking feature.",
+  },
+  {
+    label: "Draft an API",
+    prompt: "Sketch a clean API contract for projects, tasks, and comments.",
+  },
+  {
+    label: "Debug an issue",
+    prompt: "Walk me through debugging a slow mobile screen.",
+  },
+];
+
+function MessageContent({ text, isStreaming }: { text: string; isStreaming: boolean }) {
+  const [visibleText] = useSmoothText(text, {
+    startStreaming: isStreaming,
+  });
 
   return (
-    <Container className="px-4">
-      <View className="flex-1 items-center justify-center gap-3 py-16">
-        <Surface variant="secondary" className="h-14 w-14 items-center justify-center rounded-full">
-          <Ionicons name="chatbubble-ellipses-outline" size={28} color={mutedColor} />
-        </Surface>
-        <Text className="text-center text-xl font-semibold text-foreground">Assistant</Text>
-        <Text className="text-center text-sm leading-5 text-muted">
-          The assistant is not connected. It will return with the new backend.
-        </Text>
-      </View>
+    <Text selectable className="text-foreground text-sm leading-relaxed">
+      {visibleText}
+    </Text>
+  );
+}
+
+export default function AIScreen() {
+  const [input, setInput] = useState("");
+  const [threadId, setThreadId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const scrollViewRef = useRef<ScrollView>(null);
+  const mutedColor = useThemeColor("muted");
+  const foregroundColor = useThemeColor("foreground");
+
+  const createThread = useMutation(api.chat.createNewThread);
+  const sendMessage = useMutation(api.chat.sendMessage);
+
+  const { results: messages } = useUIMessages(
+    api.chat.listMessages,
+    threadId ? { threadId } : "skip",
+    { initialNumItems: 50, stream: true },
+  );
+
+  const hasStreamingMessage = messages?.some((m) => m.status === "streaming");
+  const hasMessages = Boolean(messages?.length);
+  const isBusy = isLoading || Boolean(hasStreamingMessage);
+  const canSend = Boolean(input.trim()) && !isBusy;
+
+  useEffect(() => {
+    scrollViewRef.current?.scrollToEnd({ animated: true });
+  }, [messages, isLoading]);
+
+  const sendPrompt = async (prompt: string) => {
+    const value = prompt.trim();
+    if (!value || isBusy) return;
+
+    setIsLoading(true);
+    setInput("");
+
+    try {
+      let currentThreadId = threadId;
+      if (!currentThreadId) {
+        currentThreadId = await createThread();
+        setThreadId(currentThreadId);
+      }
+
+      await sendMessage({ threadId: currentThreadId, prompt: value });
+    } catch (error) {
+      console.error("Failed to send message:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const onNewChat = () => {
+    if (isBusy) return;
+    setInput("");
+    setThreadId(null);
+  };
+
+  return (
+    <Container isScrollable={false}>
+      <KeyboardAvoidingView
+        className="flex-1"
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+      >
+        <View className="flex-1 px-4">
+          <View className="flex-row items-center justify-between py-3">
+            <View className="flex-row items-center gap-2">
+              <View className={`h-2 w-2 rounded-full ${isBusy ? "bg-primary" : "bg-border"}`} />
+              <Text className="text-sm font-semibold text-foreground tabular-nums">
+                {isBusy ? "Streaming" : hasMessages ? `${messages?.length ?? 0} messages` : "Ready"}
+              </Text>
+            </View>
+            <Button
+              size="sm"
+              variant="secondary"
+              onPress={onNewChat}
+              isDisabled={isBusy || (!hasMessages && !threadId)}
+            >
+              <Ionicons name="add" size={16} color={foregroundColor} />
+              <Text className="text-sm font-medium text-foreground">New</Text>
+            </Button>
+          </View>
+
+          <Separator className="mb-1" />
+
+          <ScrollView
+            ref={scrollViewRef}
+            className="flex-1"
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ flexGrow: 1, paddingVertical: 16 }}
+            keyboardShouldPersistTaps="handled"
+          >
+            {!hasMessages ? (
+              <View className="flex-1 justify-center gap-3">
+                <View className="items-center gap-3">
+                  <Surface
+                    variant="secondary"
+                    className="h-14 w-14 items-center justify-center rounded-full"
+                  >
+                    <Ionicons name="chatbubble-ellipses-outline" size={28} color={mutedColor} />
+                  </Surface>
+                  <Text className="text-center text-xl font-semibold text-foreground">
+                    Start a conversation
+                  </Text>
+                  <Text selectable className="text-center text-sm leading-5 text-muted">
+                    Use a starter prompt or ask your own question.
+                  </Text>
+                </View>
+                <View className="gap-2">
+                  {starterPrompts.map((item) => (
+                    <Pressable
+                      key={item.label}
+                      onPress={() => sendPrompt(item.prompt)}
+                      disabled={isBusy}
+                    >
+                      <Surface
+                        variant="secondary"
+                        className={`gap-1 rounded-xl p-3 ${isBusy ? "opacity-50" : ""}`}
+                      >
+                        <Text className="text-sm font-semibold text-foreground">{item.label}</Text>
+                        <Text className="text-sm leading-5 text-muted">{item.prompt}</Text>
+                      </Surface>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            ) : (
+              <View className="gap-3">
+                {messages?.map((message) => (
+                  <View
+                    key={`${message.order}-${message.stepOrder}`}
+                    className={`flex-row ${
+                      message.role === "user" ? "justify-end" : "justify-start"
+                    }`}
+                  >
+                    <Surface
+                      variant={message.role === "user" ? "tertiary" : "secondary"}
+                      style={{ maxWidth: "86%" }}
+                      className={`rounded-2xl p-3 ${
+                        message.role === "user" ? "rounded-tr-md" : "rounded-tl-md"
+                      }`}
+                    >
+                      <Text className="mb-1 text-xs font-semibold text-muted">
+                        {message.role === "user" ? "You" : "AI"}
+                      </Text>
+                      <MessageContent
+                        text={(message.parts ?? [])
+                          .map((part) => (part.type === "text" ? part.text : ""))
+                          .join("")}
+                        isStreaming={message.status === "streaming"}
+                      />
+                    </Surface>
+                  </View>
+                ))}
+                {isLoading && !hasStreamingMessage && (
+                  <View className="flex-row justify-start">
+                    <Surface
+                      variant="secondary"
+                      style={{ maxWidth: "86%" }}
+                      className="rounded-2xl rounded-tl-md p-3"
+                    >
+                      <Text className="mb-1 text-xs font-semibold text-muted">AI</Text>
+                      <View className="flex-row items-center gap-2">
+                        <Spinner size="sm" />
+                        <Text className="text-sm text-muted">Thinking...</Text>
+                      </View>
+                    </Surface>
+                  </View>
+                )}
+              </View>
+            )}
+          </ScrollView>
+
+          <Separator className="mb-3" />
+
+          <View className="flex-row items-end gap-2 pb-4">
+            <View className="flex-1">
+              <TextField>
+                <Input
+                  value={input}
+                  onChangeText={setInput}
+                  placeholder="Message AI..."
+                  onSubmitEditing={() => sendPrompt(input)}
+                  editable={!isBusy}
+                  returnKeyType="send"
+                />
+              </TextField>
+            </View>
+            <Button
+              isIconOnly
+              variant={canSend ? "primary" : "secondary"}
+              onPress={() => sendPrompt(input)}
+              isDisabled={!canSend}
+              size="sm"
+            >
+              <Ionicons name="arrow-up" size={18} color={canSend ? foregroundColor : mutedColor} />
+            </Button>
+          </View>
+        </View>
+      </KeyboardAvoidingView>
     </Container>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { api, useMutation, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { FormEvent, ReactNode } from "react";

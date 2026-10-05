@@ -1,7 +1,7 @@
 "use client";
 
-import { api, Authenticated, Unauthenticated, useQuery } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { Authenticated, Unauthenticated, useQuery } from "convex/react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";

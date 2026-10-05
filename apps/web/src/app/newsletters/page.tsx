@@ -1,7 +1,8 @@
 "use client";
 
-import { api, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -341,7 +342,7 @@ export default function NewslettersPage() {
                           key={story._id}
                           story={story}
                           latest={latest?._id === story._id}
-                          note={note && note.id === String(story._id) ? note.text : null}
+                          note={note?.id === story._id ? note.text : null}
                           shareUrl={`${base}/stories/${story.slug}`}
                           onCopy={() => void copyLink(story)}
                         />

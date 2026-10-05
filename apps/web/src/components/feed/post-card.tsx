@@ -1,7 +1,9 @@
 "use client";
 
-import { api, type Id, useMutation, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
+import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import Link from "next/link";
 import { useState } from "react";

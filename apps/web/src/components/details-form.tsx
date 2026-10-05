@@ -1,7 +1,8 @@
 "use client";
 
-import { api, type Id, useAction, useMutation, useQuery } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
+import { useAction, useMutation, useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState } from "react";
 import { toast } from "sonner";

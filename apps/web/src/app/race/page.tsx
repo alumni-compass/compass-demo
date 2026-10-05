@@ -1,7 +1,14 @@
 "use client";
 
-import { api, Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useMutation,
+  useQuery,
+} from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 

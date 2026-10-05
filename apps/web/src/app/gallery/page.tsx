@@ -1,7 +1,8 @@
 "use client";
 
-import { api, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import { useEffect, useState } from "react";
 
 import {
@@ -474,7 +475,7 @@ export default function GalleryPage() {
                             key={album._id}
                             album={album}
                             open={openIds.includes(album._id)}
-                            note={note && note.id === String(album._id) ? note.text : null}
+                            note={note?.id === album._id ? note.text : null}
                             onToggle={() => toggle(album._id)}
                             onShare={() => void shareAlbum(album)}
                           />

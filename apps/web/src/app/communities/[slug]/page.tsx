@@ -1,7 +1,15 @@
 "use client";
 
-import { api, type Id, Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useMutation,
+  useQuery,
+} from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import type { FormEvent } from "react";

@@ -1,0 +1,3 @@
+{
+  "extends": "@RIT-ALUMINI/config/tsconfig.base.json"
+}

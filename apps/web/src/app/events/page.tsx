@@ -1,7 +1,8 @@
 "use client";
 
-import { api, useMutation, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useMutation, useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
@@ -692,9 +693,7 @@ export default function EventsPage() {
   const ticketed = upcomingList.filter((e) => e.ticketPriceInr > 0).length;
 
   // Only offer the types actually on the calendar, so no filter leads nowhere.
-  const kinds: string[] = Array.from(
-    new Set(upcomingList.map((e) => String(e.kind))),
-  );
+  const kinds = Array.from(new Set(upcomingList.map((e) => e.kind)));
   const shown = kind === "all" ? upcomingList : upcomingList.filter((e) => e.kind === kind);
 
   return (
@@ -729,7 +728,7 @@ export default function EventsPage() {
                 Filter by type
               </legend>
               <div className="mt-2 flex flex-wrap gap-px bg-line">
-                {(["all", ...kinds] as string[]).map((value) => {
+                {(["all", ...kinds] as const).map((value) => {
                   const active = kind === value;
                   return (
                     <label key={value} className="block">
@@ -746,7 +745,7 @@ export default function EventsPage() {
                           active ? "bg-ink text-bone" : "bg-white text-slate-ink"
                         }`}
                       >
-                        {value === "all" ? "All types" : KIND_LABEL[value as EventKind]}
+                        {value === "all" ? "All types" : KIND_LABEL[value]}
                       </span>
                     </label>
                   );

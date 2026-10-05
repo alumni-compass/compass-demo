@@ -1,7 +1,14 @@
 "use client";
 
-import { api, Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import {
+  Authenticated,
+  AuthLoading,
+  Unauthenticated,
+  useMutation,
+  useQuery,
+} from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 
 import AvatarPicker from "@/components/avatar-picker";
@@ -1463,7 +1470,8 @@ function DirectoryPreview({
       </div>
 
       <p className="font-mono mt-4 text-[0.7rem] leading-relaxed text-slate-ink">
-        A private field stays out of another member&rsquo;s view.
+        Redaction is enforced in Convex, not here — a private field is never sent
+        to another member&rsquo;s browser at all.
       </p>
     </div>
   );

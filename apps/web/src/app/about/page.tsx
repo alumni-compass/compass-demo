@@ -48,7 +48,7 @@ const MODULES = [
   {
     n: "03",
     name: "Alumni directory",
-    line: "Search by name with filters for batch, department, company and region. Connecting is a mutual request: ask, they accept, and a direct thread opens. Where a member you know also knows the one you are viewing, the portal names them. The batch rail is the fastest way in.",
+    line: "Search by name with filters for batch, department, company and region, running on a Convex search index. Connecting is a real mutual edge, not a mail draft: ask, they accept, and a direct thread opens. Where a member you know also knows the one you are viewing, the portal names them. The batch rail is the fastest way in.",
   },
   {
     n: "04",
@@ -99,16 +99,16 @@ const MODULES = [
 
 const IN_PLACE = [
   {
-    t: "Runs in the browser",
-    c: "This preview keeps its sample directory, feed and messages in the page itself. Nothing is sent to a database, and refreshing the tab restores the sample.",
+    t: "Encrypted in transit",
+    c: "The portal is served over HTTPS with TLS terminated by the hosting platform, and the Convex client connects over a secure WebSocket. No page on this site accepts credentials over plain HTTP.",
   },
   {
-    t: "Per-field visibility",
-    c: "The directory hides contact details until a member publishes them. In this preview that choice is kept with the sample profile for the session.",
+    t: "Per-field visibility, enforced on the server",
+    c: "The directory redacts hidden fields inside the Convex query rather than in the browser. If a member hides a phone number or a LinkedIn URL, that value is never sent to any client — hiding it is not a CSS trick.",
   },
   {
-    t: "A local preview session",
-    c: "Sign-in opens a sample admin session in this browser. There is no password, no provider round trip, and no account stored anywhere else.",
+    t: "Credentials handled by better-auth",
+    c: "Passwords are hashed and sessions issued by better-auth. The association never stores or sees a member's password, and nothing in the portal logs one.",
   },
   {
     t: "Connections and messages never publish an address",

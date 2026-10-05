@@ -1,7 +1,6 @@
 "use client";
 
-import { Authenticated } from "@/lib/standalone";
-
+import { Authenticated } from "convex/react";
 import type { ReactNode } from "react";
 
 /**

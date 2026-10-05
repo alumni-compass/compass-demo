@@ -8,6 +8,7 @@ import Providers from "@/components/providers";
 import SessionOnly from "@/components/session-only";
 import SiteFooter from "@/components/site-footer";
 import SiteHeader from "@/components/site-header";
+import { getToken } from "@/lib/auth-server";
 import { RITAA } from "@/lib/site";
 
 /**
@@ -39,10 +40,11 @@ export const metadata: Metadata = {
 export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const token = await getToken();
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="antialiased">
-        <Providers>
+        <Providers initialToken={token}>
           {/* Refreshes a consenting member's location once per sign-in, and
               does nothing at all otherwise — see location-sentinel.tsx. */}
           <SessionOnly>

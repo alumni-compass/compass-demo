@@ -1,7 +1,8 @@
 "use client";
 
-import { api, useQuery, type FunctionReturnType } from "@/lib/standalone";
-
+import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { useQuery } from "convex/react";
+import type { FunctionReturnType } from "convex/server";
 import Link from "next/link";
 import type { ComponentProps } from "react";
 import { useEffect, useState } from "react";
@@ -394,7 +395,7 @@ export default function StoriesPage() {
                     <StoryCard
                       key={story._id}
                       story={story}
-                      note={note && note.id === String(story._id) ? note.text : null}
+                      note={note?.id === story._id ? note.text : null}
                       onShare={share}
                     />
                   ))}
@@ -466,7 +467,7 @@ export default function StoriesPage() {
                     >
                       Copy link
                     </button>
-                    {note && note.id === String(latestIssue._id) ? (
+                    {note?.id === latestIssue._id ? (
                       <span
                         aria-hidden
                         className="font-mono text-[0.7rem] tabular-nums text-jade"

@@ -11,9 +11,12 @@
     "build": "turbo run build",
     "check-types": "turbo run check-types",
     "dev:native": "turbo run dev -F native",
-    "dev:web": "turbo run dev -F web"
+    "dev:web": "turbo run dev -F web",
+    "dev:server": "turbo run dev -F @RIT-ALUMINI/backend",
+    "dev:setup": "turbo run dev:setup -F @RIT-ALUMINI/backend"
   },
   "dependencies": {
+    "@RIT-ALUMINI/env": "*",
     "dotenv": "^17.4.2",
     "zod": "^4.4.3"
   },
