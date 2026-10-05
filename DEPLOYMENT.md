@@ -4,8 +4,8 @@ Two things get deployed, and they are separate:
 
 | Part | Where | How |
 | --- | --- | --- |
-| Web app (`apps/web`) | Vercel | Git push, auto-build |
-| Backend + database (`packages/backend`) | Convex Cloud | `npx convex deploy` |
+| Web app (repository root) | Vercel | Git push, auto-build |
+| Backend + database (`convex/`) | Convex Cloud | `npx convex deploy` |
 
 Vercel never runs the database. If you deploy only the website, it will build and
 then fail to load data, because it will still be pointing at whichever Convex
@@ -15,22 +15,20 @@ deployment its environment variables name.
 
 ## 1. Vercel project settings
 
-When you import `kaliappan20/RIT-ALUMINI`, Vercel will detect a monorepo. Set:
+When you import `kaliappan20/RIT-ALUMINI`, leave the root directory as the
+repository root. The Next.js app lives beside `package.json`.
 
 | Setting | Value |
 | --- | --- |
-| **Root Directory** | `apps/web` |
+| **Root Directory** | `.` (repository root) |
 | Framework Preset | Next.js (auto-detected) |
 | Build Command | leave default (`next build`) |
 | Install Command | leave default |
 | Node.js Version | 20.x or later |
 
-**Root Directory is the one that matters.** Left at the repository root, Vercel
-looks for a Next.js app beside `package.json`, finds a Turborepo instead, and the
-build fails. Vercel installs the npm workspace from the repo root on its own.
-
-`apps/web/vercel.json` pins the framework and sets the Mumbai region (`bom1`), so
-requests from Tamil Nadu are not served from the United States.
+`vercel.json` pins the framework and sets the Mumbai region (`bom1`), so
+requests from Tamil Nadu are not served from the United States. The Expo app in
+`native/` is not part of this build.
 
 ---
 
@@ -49,7 +47,7 @@ Development**:
 > deployment yet. Use `npx convex dev --once` (dev) or `npx convex deploy` (prod) to
 > actually push, and `npx convex run <module>:<fn>` to confirm a function is live.
 
-Both are read at **build** time by `packages/env/src/web.ts`, which validates that
+Both are read at **build** time by `src/lib/env.ts`, which validates that
 each is a real URL and explicitly rejects the `example.convex.cloud` placeholder.
 If either is missing or still a placeholder, the Vercel build fails with a message
 naming the variable — deliberately, so a broken site is never published.
@@ -66,7 +64,6 @@ The backend currently runs on the dev deployment `terrific-bird-760`. For
 production:
 
 ```bash
-cd packages/backend
 npx convex deploy          # creates/updates the prod deployment, prints its URL
 ```
 
@@ -113,7 +110,7 @@ npx convex env set EVENT_FROM_EMAIL "RITAA <alumni@ritrjpm.ac.in>"
 > Set at least one pair before announcing the site.
 
 **`SITE_URL` must be the real HTTPS Vercel domain.** Better Auth uses it as its
-`baseURL` and trusted origin (`packages/backend/convex/auth.ts`). Left as
+`baseURL` and trusted origin (`convex/auth.ts`). Left as
 `http://localhost:3001`, sign-in fails in production and cookies are issued
 against a plaintext origin.
 
@@ -139,7 +136,6 @@ URLs and redeploy.
 ## 4. Seeding
 
 ```bash
-cd packages/backend
 npx convex run seed:run
 ```
 
@@ -148,7 +144,7 @@ brief, and two photograph albums built from the college's own convocation images
 The directory, careers board, mentorship roster, RACE feed, events calendar,
 stories and campaigns are left empty on purpose — they show their empty states
 until the association enters real records. See the header comment in
-`packages/backend/convex/seed.ts`.
+`convex/seed.ts`.
 
 `seed:run` **deletes** every row in those tables before inserting. Never run it
 against a production deployment that holds real member data.
@@ -201,7 +197,6 @@ you have confirmed it is empty on every deployment.
 Granting the first admin (there is no UI for this, by design):
 
 ```bash
-cd packages/backend
 npx convex run access:setRole '{"email":"alumni@ritrjpm.ac.in","role":"admin"}'
 ```
 
@@ -216,7 +211,7 @@ npx convex run adminOps:approveVenture   '{"ventureId":"..."}'
 
 ## 6. Android app
 
-`apps/native` is an Expo app sharing the same Convex backend. The generated
+`native/` is an Expo app sharing the same Convex backend. The generated
 `android/` project is committed because it carries two fixes that `expo prebuild`
 would otherwise discard:
 
@@ -228,7 +223,7 @@ would otherwise discard:
 If you ever re-run `expo prebuild`, re-apply both. Build with:
 
 ```bash
-cd apps/native/android
+cd native/android
 ./gradlew assembleRelease
 ```
 

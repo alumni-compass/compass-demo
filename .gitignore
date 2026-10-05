@@ -12,12 +12,14 @@ build
 # created by D:\rit-build\setup-junctions.ps1 because C: has no free space)
 .cxx
 
-# Generated files
-apps/web/src/routeTree.gen.ts
+# Next.js
+.next/
+out/
+next-env.d.ts
 
 # Environment variables
-.env
-.env*.local
+.env*
+!.env.example
 
 # IDEs and editors
 .vscode/*
@@ -40,10 +42,6 @@ yarn-debug.log*
 yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
-
-# Turbo
-.turbo
-.nx
 
 # Better-T-Stack
 .alchemy

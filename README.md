@@ -9,10 +9,9 @@ This project was created with [Better-T-Stack](https://github.com/AmanVarshney01
 - **React Native** - Build mobile apps using React
 - **Expo** - Tools for React Native development
 - **TailwindCSS** - Utility-first CSS for rapid UI development
-- **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Convex** - Reactive backend-as-a-service platform
+- **shadcn/ui** - primitives live in `src/components/ui`
+- **Convex** - Reactive backend-as-a-service platform (`convex/`)
 - **Authentication** - Better-Auth, **Google and LinkedIn only**
-- **Turborepo** - Optimized monorepo build system
 
 ## Signing in
 
@@ -25,7 +24,6 @@ Each provider registers itself only when both of its credentials are present on
 the Convex deployment, so **with neither set, nobody can sign in**:
 
 ```bash
-cd packages/backend
 npx convex env set GOOGLE_CLIENT_ID        xxx
 npx convex env set GOOGLE_CLIENT_SECRET    xxx
 npx convex env set LINKEDIN_CLIENT_ID      xxx
@@ -56,6 +54,7 @@ First, install the dependencies:
 
 ```bash
 npm install
+npm install --prefix native
 ```
 
 ## Convex Setup
@@ -66,9 +65,7 @@ This project uses Convex as a backend. You'll need to set up Convex before runni
 npm run dev:setup
 ```
 
-Follow the prompts to create a new Convex project and connect it to your application.
-
-Copy environment variables from `packages/backend/.env.local` to `apps/*/.env`.
+Follow the prompts to create a new Convex project and connect it to your application. Convex writes `.env.local` at the repo root; copy the two `NEXT_PUBLIC_*` values from `.env.example` if they are not already there.
 
 Then, run the development server:
 
@@ -76,53 +73,48 @@ Then, run the development server:
 npm run dev
 ```
 
-Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
-Use the Expo Go app to run the mobile application.
-Your app will connect to the Convex cloud backend automatically.
+That starts Next.js and Convex together. Open [http://localhost:3001](http://localhost:3001).
+
+The Expo app is a separate project in `native/`:
+
+```bash
+npm run dev:native
+```
 
 ## UI Customization
 
-React web apps in this stack share shadcn/ui primitives through `packages/ui`.
+shadcn/ui primitives live in this app, not a shared package.
 
-- Change design tokens and global styles in `packages/ui/src/styles/globals.css`
-- Update shared primitives in `packages/ui/src/components/*`
-- Adjust shadcn aliases or style config in `packages/ui/components.json` and `apps/web/components.json`
+- Change design tokens and global styles in `src/styles/globals.css` and `src/index.css`
+- Update primitives in `src/components/ui/*`
+- Adjust shadcn aliases in `components.json`
 
-### Add more shared components
-
-Run this from the project root to add more primitives to the shared UI package:
+Add more primitives from the repo root:
 
 ```bash
-npx shadcn@latest add accordion dialog popover sheet table -c packages/ui
+npx shadcn@latest add accordion dialog popover sheet table
 ```
-
-Import shared components like this:
 
 ```tsx
-import { Button } from "@RIT-ALUMINI/ui/components/button";
+import { Button } from "@/components/ui/button";
 ```
-
-### Add app-specific blocks
-
-If you want to add app-specific blocks instead of shared primitives, run the shadcn CLI from `apps/web`.
 
 ## Project Structure
 
 ```
 RIT-ALUMINI/
-├── apps/
-│   ├── web/         # Frontend application (Next.js)
-│   ├── native/      # Mobile application (React Native, Expo)
-├── packages/
-│   ├── ui/          # Shared shadcn/ui components and styles
-│   ├── backend/     # Convex backend functions and schema
+├── src/           # Next.js app
+├── convex/        # Convex backend functions and schema
+├── public/        # Static assets
+└── native/        # Expo app (its own package.json)
 ```
 
 ## Available Scripts
 
-- `npm run dev`: Start all applications in development mode
-- `npm run build`: Build all applications
-- `npm run dev:web`: Start only the web application
+- `npm run dev`: Start Next.js and Convex
+- `npm run dev:web`: Start only Next.js
+- `npm run dev:convex`: Start only Convex
+- `npm run build`: Build the Next.js app
 - `npm run dev:setup`: Setup and configure your Convex project
-- `npm run check-types`: Check TypeScript types across all apps
-- `npm run dev:native`: Start the React Native/Expo development server
+- `npm run check-types`: Check TypeScript for the web app and Convex
+- `npm run dev:native`: Start the Expo development server (`native/`)
