@@ -1,7 +1,7 @@
 "use client";
 
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
-import { useQuery } from "convex/react";
+import { api, useQuery } from "@/lib/standalone";
+
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 

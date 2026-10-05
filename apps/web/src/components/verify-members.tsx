@@ -1,11 +1,10 @@
 "use client";
 
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
+import { api, useMutation, useQuery, type Role } from "@/lib/standalone";
+
 import { useState } from "react";
 import { toast } from "sonner";
 
-import type { Role } from "@RIT-ALUMINI/backend/convex/authz";
 import {
   actionErrorMessage,
   Avatar,

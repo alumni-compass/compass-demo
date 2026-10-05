@@ -1,7 +1,7 @@
 "use client";
 
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
-import { useAction, useQuery } from "convex/react";
+import { api, useAction, useQuery } from "@/lib/standalone";
+
 import { useEffect, useRef } from "react";
 
 /**

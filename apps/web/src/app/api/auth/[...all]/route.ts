@@ -1,3 +1,8 @@
-import { handler } from "@/lib/auth-server";
+/** Auth routes are unused in the standalone preview. */
+export function GET() {
+  return Response.json({ standalone: true });
+}
 
-export const { GET, POST } = handler;
+export function POST() {
+  return Response.json({ standalone: true });
+}

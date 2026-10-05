@@ -1,16 +1,7 @@
 "use client";
 
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
-import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
-import {
-  Authenticated,
-  AuthLoading,
-  Unauthenticated,
-  useMutation,
-  useQuery,
-} from "convex/react";
-import type { FunctionReturnType } from "convex/server";
-import { ConvexError } from "convex/values";
+import { api, type Id, Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery, type FunctionReturnType, ConvexError } from "@/lib/standalone";
+
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";

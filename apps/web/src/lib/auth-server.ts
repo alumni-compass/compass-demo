@@ -1,15 +1,8 @@
-import { convexBetterAuthNextJs } from "@convex-dev/better-auth/nextjs";
-import { env } from "@RIT-ALUMINI/env/web";
+/** The standalone preview has no server session. */
+export async function getToken() {
+  return null;
+}
 
-export const {
-  handler,
-  preloadAuthQuery,
-  isAuthenticated,
-  getToken,
-  fetchAuthQuery,
-  fetchAuthMutation,
-  fetchAuthAction,
-} = convexBetterAuthNextJs({
-  convexUrl: env.NEXT_PUBLIC_CONVEX_URL,
-  convexSiteUrl: env.NEXT_PUBLIC_CONVEX_SITE_URL,
-});
+export async function isAuthenticated() {
+  return false;
+}

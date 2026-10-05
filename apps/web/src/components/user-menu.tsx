@@ -1,4 +1,4 @@
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
+import { api, useQuery } from "@/lib/standalone";
 import { Button } from "@RIT-ALUMINI/ui/components/button";
 import {
   DropdownMenu,
@@ -9,7 +9,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@RIT-ALUMINI/ui/components/dropdown-menu";
-import { useQuery } from "convex/react";
 import { useRouter } from "next/navigation";
 
 import { authClient } from "@/lib/auth-client";

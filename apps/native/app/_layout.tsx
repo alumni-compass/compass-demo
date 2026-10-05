@@ -1,23 +1,15 @@
 import "@/polyfills";
 import "@/global.css";
-import { ConvexBetterAuthProvider, type AuthClient } from "@convex-dev/better-auth/react";
-import { env } from "@RIT-ALUMINI/env/native";
-import { ConvexReactClient } from "convex/react";
 import { Stack } from "expo-router";
 import { HeroUINativeProvider } from "heroui-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 
 import { AppThemeProvider } from "@/contexts/app-theme-context";
-import { authClient } from "@/lib/auth-client";
 
 export const unstable_settings = {
   initialRouteName: "(drawer)",
 };
-
-const convex = new ConvexReactClient(env.EXPO_PUBLIC_CONVEX_URL, {
-  unsavedChangesWarning: false,
-});
 
 function StackLayout() {
   return (
@@ -30,16 +22,14 @@ function StackLayout() {
 
 export default function Layout() {
   return (
-    <ConvexBetterAuthProvider client={convex} authClient={authClient as unknown as AuthClient}>
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <KeyboardProvider>
-          <AppThemeProvider>
-            <HeroUINativeProvider>
-              <StackLayout />
-            </HeroUINativeProvider>
-          </AppThemeProvider>
-        </KeyboardProvider>
-      </GestureHandlerRootView>
-    </ConvexBetterAuthProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <KeyboardProvider>
+        <AppThemeProvider>
+          <HeroUINativeProvider>
+            <StackLayout />
+          </HeroUINativeProvider>
+        </AppThemeProvider>
+      </KeyboardProvider>
+    </GestureHandlerRootView>
   );
 }

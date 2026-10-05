@@ -1,15 +1,7 @@
 "use client";
 
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
-import {
-  Authenticated,
-  AuthLoading,
-  Unauthenticated,
-  useMutation,
-  useQuery,
-} from "convex/react";
-import type { FunctionReturnType } from "convex/server";
-import { ConvexError } from "convex/values";
+import { api, Authenticated, AuthLoading, Unauthenticated, useMutation, useQuery, type FunctionReturnType, ConvexError } from "@/lib/standalone";
+
 import type { FormEvent, ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
@@ -772,7 +764,7 @@ function MentorInbox() {
                   </p>
                 ) : null}
 
-                {actionError?.id === request._id ? (
+                {actionError && actionError.id === String(request._id) ? (
                   <div className="mt-3">
                     <Alert>{actionError.message}</Alert>
                   </div>

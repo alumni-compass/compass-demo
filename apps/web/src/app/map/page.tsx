@@ -1,7 +1,7 @@
 "use client";
 
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
-import { Authenticated, Unauthenticated, useQuery } from "convex/react";
+import { api, Authenticated, Unauthenticated, useQuery } from "@/lib/standalone";
+
 import Link from "next/link";
 
 import AlumniMap from "@/components/alumni-map";

@@ -1,6 +1,6 @@
 # RIT-ALUMINI
 
-This project was created with [Better-T-Stack](https://github.com/AmanVarshney01/create-better-t-stack), a modern TypeScript stack that combines Next.js, Convex, and more.
+This project is a TypeScript monorepo for the Ramco Institute of Technology Alumni Association. The web app is a standalone Next.js UI on sample data. The mobile app is an Expo shell. The backend is being replaced and is not in this repository.
 
 ## Features
 
@@ -10,32 +10,13 @@ This project was created with [Better-T-Stack](https://github.com/AmanVarshney01
 - **Expo** - Tools for React Native development
 - **TailwindCSS** - Utility-first CSS for rapid UI development
 - **Shared UI package** - shadcn/ui primitives live in `packages/ui`
-- **Convex** - Reactive backend-as-a-service platform
-- **Authentication** - Better-Auth, **Google and LinkedIn only**
 - **Turborepo** - Optimized monorepo build system
 
 ## Signing in
 
-The portal has exactly two ways in: **Continue with Google** and **Continue with
-LinkedIn**. There is no password and no one-time code — a members' directory is
-only worth joining if the people in it are who they say they are, and a
-provider-confirmed identity arrives with a real name and a working address.
-
-Each provider registers itself only when both of its credentials are present on
-the Convex deployment, so **with neither set, nobody can sign in**:
-
-```bash
-cd packages/backend
-npx convex env set GOOGLE_CLIENT_ID        xxx
-npx convex env set GOOGLE_CLIENT_SECRET    xxx
-npx convex env set LINKEDIN_CLIENT_ID      xxx
-npx convex env set LINKEDIN_CLIENT_SECRET  xxx
-
-npx convex run auth:configuredAuthMethods   # anyConfigured must be true
-```
-
-Redirect URIs to register with each provider are
-`<SITE_URL>/api/auth/callback/google` and `…/linkedin`. See `DEPLOYMENT.md`.
+The web preview opens already signed in as a sample admin. Sign-out is stored in
+the browser. Google and LinkedIn buttons on the join page return to that same
+sample session. A real provider sign-in arrives with the new backend.
 
 ## The network
 
@@ -44,8 +25,8 @@ Redirect URIs to register with each provider are
 - Connecting is a **mutual edge** — a request does nothing until the other member
   accepts, and either side can withdraw or remove it afterwards.
 - Accepting opens a **direct thread** inside the portal. No phone number or email
-  changes hands: `network.ts` and `messaging.ts` never return an address to a
-  browser, and the client's handles are an `alumniId` and a `connectionId`.
+  changes hands: the sample layer never returns a private address to another
+  member, and the handles on screen are an `alumniId` and a `connectionId`.
 - Where a member you know also knows the one you are viewing, the portal **names
   them** instead of showing an abstract degree — that is who to ask for the
   introduction.
@@ -58,27 +39,19 @@ First, install the dependencies:
 npm install
 ```
 
-## Convex Setup
-
-This project uses Convex as a backend. You'll need to set up Convex before running the app:
+Then start the web app:
 
 ```bash
-npm run dev:setup
+npm run dev:web
 ```
 
-Follow the prompts to create a new Convex project and connect it to your application.
+Open [http://localhost:3001](http://localhost:3001) in your browser.
 
-Copy environment variables from `packages/backend/.env.local` to `apps/*/.env`.
-
-Then, run the development server:
+Start the mobile app with:
 
 ```bash
-npm run dev
+npm run dev:native
 ```
-
-Open [http://localhost:3001](http://localhost:3001) in your browser to see the web application.
-Use the Expo Go app to run the mobile application.
-Your app will connect to the Convex cloud backend automatically.
 
 ## UI Customization
 
@@ -115,7 +88,6 @@ RIT-ALUMINI/
 │   ├── native/      # Mobile application (React Native, Expo)
 ├── packages/
 │   ├── ui/          # Shared shadcn/ui components and styles
-│   ├── backend/     # Convex backend functions and schema
 ```
 
 ## Available Scripts
@@ -123,6 +95,5 @@ RIT-ALUMINI/
 - `npm run dev`: Start all applications in development mode
 - `npm run build`: Build all applications
 - `npm run dev:web`: Start only the web application
-- `npm run dev:setup`: Setup and configure your Convex project
 - `npm run check-types`: Check TypeScript types across all apps
 - `npm run dev:native`: Start the React Native/Expo development server

@@ -1,9 +1,7 @@
 "use client";
 
-import { api } from "@RIT-ALUMINI/backend/convex/_generated/api";
-import type { Id } from "@RIT-ALUMINI/backend/convex/_generated/dataModel";
-import { useQuery } from "convex/react";
-import type { FunctionReturnType } from "convex/server";
+import { api, type Id, useQuery, type FunctionReturnType } from "@/lib/standalone";
+
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useDeferredValue, useState, type ReactNode } from "react";

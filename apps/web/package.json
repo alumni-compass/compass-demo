@@ -9,16 +9,10 @@
     "start": "next start"
   },
   "dependencies": {
-    "@convex-dev/agent": "^0.6.4",
-    "@convex-dev/better-auth": "^0.12.5",
-    "@RIT-ALUMINI/backend": "*",
-    "@RIT-ALUMINI/env": "*",
     "@RIT-ALUMINI/ui": "*",
     "@swc/helpers": "^0.5.23",
     "@tanstack/react-form": "^1.33.2",
     "babel-plugin-react-compiler": "^1.0.0",
-    "better-auth": "1.6.25",
-    "convex": "^1.42.3",
     "dotenv": "^17.4.2",
     "lucide-react": "^1.27.0",
     "maplibre-gl": "^6.7.0",
